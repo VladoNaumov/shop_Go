@@ -1,5 +1,7 @@
 package platform
 
+// Создаёт http.Server с безопасными таймаутами/лимитами — защита от Slowloris/DoS на уровне соединений.
+
 import (
 	"net/http"
 	"time"
