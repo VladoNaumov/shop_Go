@@ -1,5 +1,8 @@
 package main
 
+// Главный файл: загружает конфиг, собирает роутер, поднимает HTTP-сервер с таймаутами,
+// логирует запуск и делает корректное завершение (graceful shutdown).
+
 import (
 	"context"
 	"errors"
@@ -18,20 +21,21 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// JSON-логгер (без внешних либ)
+	// Простой JSON-логгер (без внешних либ)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	// роутер
+	// Роутер (внутри подключены middleware, хендлеры, статика)
 	r := httpx.NewRouter()
 
-	// сервер с таймаутами
+	// HTTP-сервер с безопасными таймаутами
 	srv := platform.NewServer(cfg.HTTPAddr, r)
 
-	// Graceful shutdown
+	// Контекст для остановки по сигналам OS
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Запуск сервера в отдельной горутине
 	go func() {
 		logger.Info("http: listening", "addr", srv.Addr, "env", cfg.Env, "app", cfg.AppName)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
@@ -40,9 +44,11 @@ func main() {
 		}
 	}()
 
+	// Ожидаем сигнал
 	<-ctx.Done()
 	logger.Info("http: shutdown started")
 
+	// Мягкое завершение с таймаутом
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
