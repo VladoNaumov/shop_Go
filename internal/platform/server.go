@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func NewServer(addr string, h http.Handler) *http.Server {
+func Server(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           h,

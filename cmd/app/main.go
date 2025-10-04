@@ -1,6 +1,6 @@
 package main
 
-// Главный файл: загружает конфиг, собирает роутер, поднимает HTTP-сервер с таймаутами,
+// Он не занимается бизнес-логикой, а только настраивает, запускает и корректно завершает HTTP-сервер.
 // логирует запуск и делает корректное завершение (graceful shutdown).
 
 import (
@@ -16,26 +16,38 @@ import (
 	"example.com/shop/internal/config"
 	"example.com/shop/internal/platform"
 	"example.com/shop/internal/transport/httpx"
-)
+	/*
+		context — для управления временем жизни процессов (например, остановки сервера).
+		errors — для проверки типов ошибок.
+		slog — современный структурированный логгер из стандартной библиотеки Go 1.21+.
+		net/http — стандартный HTTP-сервер.
+		os, os/signal, syscall — для обработки системных сигналов (Ctrl+C, SIGTERM).
+		time — для таймаутов.
+		config, platform, httpx — твои внутренние пакеты.
+	*/)
 
 func main() {
+	// Загрузка конфигурации
 	cfg := config.Load()
 
-	// Простой JSON-логгер (без внешних либ)
+	// Простой JSON-логгер
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
+	// Инициализация маршрутизатора
 	// Роутер (внутри подключены middleware, хендлеры, статика)
-	r := httpx.NewRouter()
+	router := httpx.Router()
 
-	// HTTP-сервер с безопасными таймаутами
-	srv := platform.NewServer(cfg.HTTPAddr, r)
+	// Создание HTTP-сервер с безопасными таймаутами
+	srv := platform.Server(cfg.HTTPAddr, router)
 
-	// Контекст для остановки по сигналам OS
+	// Обработка сигналов (остановка)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Запуск сервера в отдельной горутине
+	//Запускаем сервер асинхронно, чтобы можно было параллельно ждать сигналов.
+	//Если сервер завершился не по «нормальному» закрытию (http.ErrServerClosed),
+	//то логируем ошибку и завершаем программу.
 	go func() {
 		logger.Info("http: listening", "addr", srv.Addr, "env", cfg.Env, "app", cfg.AppName)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
@@ -48,7 +60,7 @@ func main() {
 	<-ctx.Done()
 	logger.Info("http: shutdown started")
 
-	// Мягкое завершение с таймаутом
+	// корректное завершение работы без обрыва пользователей.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

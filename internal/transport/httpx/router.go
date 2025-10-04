@@ -14,36 +14,38 @@ import (
 	"example.com/shop/internal/transport/httpx/handlers"
 )
 
-func NewRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Use(commonMiddlewares)
+func Router() http.Handler {
+	// Создаём новый роутер из пакета chi
+	router := chi.NewRouter()
+	// Подключение middleware
+	router.Use(commonMiddlewares)
 
-	// Health/Ready (готовность пока без БД)
-	r.Get("/healthz", handlers.Health)
-	r.Get("/readyz", handlers.Ready)
+	// Основные маршруты
+	router.Get("/", handlers.HomeIndex)
+	router.Get("/healthz", handlers.Health)
+	router.Get("/readyz", handlers.Ready)
+	router.Handle("/metrics", promhttp.Handler()) //Отдаёт метрики Prometheus
 
-	// Prometheus метрики
-	r.Handle("/metrics", promhttp.Handler())
-
-	// Статика (только GET) + кэш
+	// Раздача статических файлов
+	// http.Dir — создаёт виртуальную директорию, где будут искаться файлы.
 	assetsDir := http.Dir(filepath.Clean("web/assets"))
+	// http.FileServer — превращает эту директорию в обработчик (умеет отдавать .css, .js, .png и т.п.).
 	fs := http.FileServer(assetsDir)
-	r.Group(func(r chi.Router) {
+
+	// создаёт подгруппу маршрутов
+	router.Group(func(r chi.Router) {
 		r.Get("/assets/*", http.StripPrefix("/assets/", cacheStatic(fs)).ServeHTTP)
 	})
 
-	// Главная (SSR)
-	r.Get("/", handlers.HomeIndex) // аналог Controller@index
-
-	// Стандартизированные ответы
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+	// Обработчики ошибок
+	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 	})
-	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+	router.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	})
 
-	return r
+	return router // Теперь Router() можно подключить в main.go -> http.ListenAndServe(":8080", Router())
 }
 
 func cacheStatic(next http.Handler) http.Handler {
