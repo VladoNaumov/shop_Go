@@ -32,7 +32,7 @@ type HomeViewsModel struct {
 func HomeIndex(w http.ResponseWriter, r *http.Request) {
 
 	// Создание данных для шаблона
-	vm := HomeViewsModel{
+	vm := HomeViewsModel{ // ViewModel
 		Title:   "Главная",
 		Message: "Это стартовая страница. SSR на html/template + chi.",
 	}

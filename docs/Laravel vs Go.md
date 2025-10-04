@@ -9,7 +9,7 @@ Route::get('/', [HomeController::class, 'index']);
 В Go (через chi):
 
 ```go
-r.Get("/", handlers.Home)
+Route.Get("/", handlers.Home)
 ```
 
 То есть `handlers.Home` — это **функция-обработчик (handler)**, которую chi вызывает при обращении к `/`.

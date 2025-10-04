@@ -1,3 +1,45 @@
+
+```
+shop/
+├─ cmd/
+│  └─ app/
+│     └─ main.go
+│
+├─ internal/
+│  ├─ config/
+│  │  └─ config.go
+│  ├─ platform/
+│  │  └─ server.go
+│  └─ transport/
+│     └─ httpx/
+│        ├─ router.go
+│        ├─ middleware.go
+│        └─ handlers/
+│           ├─ health.go
+│           └─ home.go
+│
+├─ web/
+│  ├─ assets/
+│  │  └─ css/
+│  │     └─ style.css
+│  └─ templates/
+│     ├─ layouts/
+│     │  └─ base.tmpl
+│     ├─ partials/
+│     │  ├─ nav.tmpl
+│     │  └─ footer.tmpl
+│     └─ pages/
+│        └─ home.tmpl
+│
+├─ .env
+├─ go.mod
+└─ Makefile
+
+```
+
+**TODO: создание витрины где показываем все продукты ( мы их тянет с бд ),
+мы можем выбрать один продукти посмотреть нформацию об этом продукте.**
+
 **Шаг 1**
 
 ---
@@ -427,25 +469,6 @@ HTTP_ADDR=:8080
 
 ---
 
-## `Makefile` — удобные команды
-
-```make
-GOCMD=go
-
-run:
-	APP_ENV=dev HTTP_ADDR=:8080 $(GOCMD) run ./cmd/app
-
-tidy:
-	$(GOCMD) mod tidy
-
-lint:
-	@echo "включим golangci-lint на следующем шаге"
-
-test:
-	$(GOCMD) test ./... -count=1
-```
-
----
 
 ## `go.mod` — минимальный модуль
 
@@ -460,11 +483,9 @@ require (
 )
 ```
 
-> версии могут отличаться — `go mod tidy` подтянет актуальные.
-
 ---
 
-### Проверка (как и прежде)
+### Проверка.
 
 ```bash
 # 1) переменные окружения

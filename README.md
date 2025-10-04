@@ -1,10 +1,12 @@
 
+***Проект интернет магазина ( Go 1.25.1 )***
 
 ```
 shop/
 ├─ cmd/
 │  └─ app/
 │     └─ main.go
+│
 ├─ internal/
 │  ├─ config/
 │  │  └─ config.go
@@ -17,6 +19,7 @@ shop/
 │        └─ handlers/
 │           ├─ health.go
 │           └─ home.go
+│
 ├─ web/
 │  ├─ assets/
 │  │  └─ css/
@@ -29,7 +32,8 @@ shop/
 │     │  └─ footer.tmpl
 │     └─ pages/
 │        └─ home.tmpl
-├─ .env.example
+│
+├─ .env
 ├─ go.mod
 └─ Makefile
 
@@ -128,8 +132,6 @@ HTML-шаблоны для SSR.
 ### **go.mod**
 
 Описание модуля и зависимостей (`chi`, `prometheus/client_golang`).
-
-
 
 компактный **план-график MVP** по спринтам с зависимостями, пакетами и критериями “готово”.
 
