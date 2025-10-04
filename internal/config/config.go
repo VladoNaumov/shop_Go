@@ -1,5 +1,7 @@
 package config
 
+// Единая точка конфигурации: читаем ENV, ставим дефолты, делаем минимальную валидацию.
+
 import (
 	"log"
 	"os"
@@ -17,7 +19,7 @@ func Load() Config {
 		Env:      getEnv("APP_ENV", "dev"),
 		HTTPAddr: getEnv("HTTP_ADDR", ":8080"),
 	}
-	// минимальная валидация
+	// Базовая валидация, чтобы не стартовать с пустым адресом
 	if cfg.HTTPAddr == "" {
 		log.Fatal("HTTP_ADDR is required")
 	}
