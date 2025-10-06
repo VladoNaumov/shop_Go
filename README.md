@@ -2,23 +2,25 @@
 ***Проект интернет магазина ( Go 1.25.1 )***
 
 ```
-shop/
+myApp/
 ├─ cmd/
 │  └─ app/
-│     └─ main.go
+│     └─ main.go                 # только сборка и wiring
 │
 ├─ internal/
+│  ├─ app/                       # высокоуровневая сборка/инициализация
+│  │  └─ server.go               # запуск http-сервера, DI узлы
 │  ├─ config/
-│  │  └─ config.go
-│  ├─ platform/
-│  │  └─ server.go
-│  └─ transport/
-│     └─ httpx/
-│        ├─ router.go
-│        ├─ middleware.go
-│        └─ handlers/
-│           ├─ health.go
-│           └─ home.go
+│  │  └─ config.go               # загрузка конфигурации (env/flags)
+│  ├─ adapter/                   # внешние адаптеры (transport, storage, etc.)
+│  │  └─ http/
+│  │     ├─ router.go
+│  │     ├─ middleware.go
+│  │     └─ handler/
+│  │        ├─ health.go
+│  │        └─ home.go
+│  ├─ domain/                    # (опционально) бизнес-модели/интерфейсы
+│  └─ usecase/                   # (опционально) бизнес-логика
 │
 ├─ web/
 │  ├─ assets/
@@ -26,14 +28,14 @@ shop/
 │  │     └─ style.css
 │  └─ templates/
 │     ├─ layouts/
-│     │  └─ base.tmpl
+│     │  └─ base.gohtml          # предпочтителен .gohtml
 │     ├─ partials/
-│     │  ├─ nav.tmpl
-│     │  └─ footer.tmpl
+│     │  ├─ nav.gohtml
+│     │  └─ footer.gohtml
 │     └─ pages/
-│        └─ home.tmpl
+│        └─ home.gohtml
 │
-├─ .env
+├─ .env                          # только для локалки
 ├─ go.mod
 └─ Makefile
 

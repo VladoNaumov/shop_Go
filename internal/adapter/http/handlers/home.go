@@ -9,26 +9,23 @@ import (
 	"net/http"
 )
 
-// Встраиваем шаблоны по папкам (без **).
 // Относительные пути заданы от текущего файла.
-var (
-	tpl = template.Must(template.ParseFiles(
-		"web/templates/layouts/base.gohtml",
-		"web/templates/partials/nav.gohtml",
-		"web/templates/partials/footer.gohtml",
-		"web/templates/pages/home.gohtml",
-	))
-)
+var tpl = template.Must(template.ParseFiles(
+	"web/templates/layouts/base.gohtml",
+	"web/templates/partials/nav.gohtml",
+	"web/templates/partials/footer.gohtml",
+	"web/templates/pages/home.gohtml",
+))
 
 // В неё кладутся данные, которые потом будут вставлены в HTML-шаблон (.tmpl).
-// 💡 То есть это как «контейнер с переменными для шаблона».
+
 type HomeViewsModel struct {
 	Title   string
 	Message string
 }
 
-// Хендлер главной страницы (аналог HomeController@index)
 // http.ResponseWriter — куда писать ответ (HTML, JSON, текст и т.д.);
+
 func HomeIndex(w http.ResponseWriter, r *http.Request) {
 
 	// Создание данных для шаблона

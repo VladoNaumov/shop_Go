@@ -1,4 +1,4 @@
-package httpx
+package http
 
 // Общие middleware: gzip, таймаут, recover, request id, real ip, логгер, безопасные заголовки.
 

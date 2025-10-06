@@ -1,4 +1,4 @@
-package httpx
+package http
 
 // Определяет маршруты: /, /healthz, /readyz, /metrics, /assets/*,
 // подключает middleware и обработчики ошибок 404/405.
@@ -11,7 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"example.com/shop/internal/transport/httpx/handlers"
+	"example.com/shop/internal/adapter/http/handlers"
 )
 
 func Router() http.Handler {
@@ -21,7 +21,7 @@ func Router() http.Handler {
 	router.Use(commonMiddlewares)
 
 	// Основные маршруты
-	router.Get("/", handlers.HomeIndex)
+	router.Get("/", handlers.HomeIndex) // ← Эндпоинт GET /
 	router.Get("/healthz", handlers.Health)
 	router.Get("/readyz", handlers.Ready)
 	router.Handle("/metrics", promhttp.Handler()) //Отдаёт метрики Prometheus

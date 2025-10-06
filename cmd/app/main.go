@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
+	httpx "example.com/shop/internal/adapter/http"
+	"example.com/shop/internal/app"
 	"example.com/shop/internal/config"
-	"example.com/shop/internal/platform"
-	"example.com/shop/internal/transport/httpx"
 	/*
 		context — для управления временем жизни процессов (например, остановки сервера).
 		errors — для проверки типов ошибок.
@@ -23,7 +23,7 @@ import (
 		net/http — стандартный HTTP-сервер.
 		os, os/signal, syscall — для обработки системных сигналов (Ctrl+C, SIGTERM).
 		time — для таймаутов.
-		config, platform, httpx — твои внутренние пакеты.
+		config, app, http — твои внутренние пакеты.
 	*/)
 
 func main() {
@@ -39,7 +39,7 @@ func main() {
 	router := httpx.Router()
 
 	// Создание HTTP-сервер с безопасными таймаутами
-	srv := platform.Server(cfg.HTTPAddr, router)
+	srv := app.Server(cfg.HTTPAddr, router)
 
 	// Обработка сигналов (остановка)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

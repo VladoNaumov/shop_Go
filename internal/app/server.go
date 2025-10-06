@@ -1,4 +1,4 @@
-package platform
+package app
 
 // Создаёт http.Server с безопасными таймаутами/лимитами — защита от Slowloris/DoS на уровне соединений.
 

@@ -1,7 +1,7 @@
 package handlers
 
 // Простые JSON-эндпоинты для liveness/readiness.
-// Позже в Ready() добавим реальные проверки БД/кэша.
+// SSR для главной: Route -> (этот "контроллер") -> json
 
 import (
 	"encoding/json"
