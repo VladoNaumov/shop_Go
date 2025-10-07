@@ -1,10 +1,8 @@
 package main
 
-// Этот файл не содержит бизнес-логики.
-// Он только настраивает, запускает и корректно завершает HTTP-сервер.
-
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -13,63 +11,75 @@ import (
 	"syscall"
 	"time"
 
-	httpx "example.com/shop/internal/adapter/http"
-	"example.com/shop/internal/app"
-	"example.com/shop/internal/config"
+	"myApp/internal/app"
+	"myApp/internal/config"
+	httpx "myApp/internal/http"
 
 	"github.com/gorilla/csrf"
 )
 
 func main() {
-	// Загружаем конфигурацию приложения
+	// config + logger
 	cfg := config.Load()
-
-	// Настраиваем структурированный логгер
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	// Инициализация роутера (маршруты + middleware)
+	// router
 	router := httpx.NewRouter()
 
-	// --- ✅ Подключаем CSRF middleware ---
-	csrfKey := []byte("32-byte-long-auth-key") // длина ключа строго 32 байта
-	csrfMw := csrf.Protect(
+	// HSTS только в prod (требует HTTPS)
+	var h http.Handler = router
+	if cfg.Secure {
+		h = hsts(h)
+	}
+
+	// CSRF (ключ делаем ровно 32 байта)
+	csrfKey := derive32(cfg.CSRFKey)
+	h = csrf.Protect(
 		csrfKey,
-		csrf.Secure(cfg.Env == "production"), // true — только HTTPS в проде
+		csrf.Secure(cfg.Secure),             // prod => только HTTPS
+		csrf.SameSite(csrf.SameSiteLaxMode), // адекватно для форм
 		csrf.HttpOnly(true),
 		csrf.Path("/"),
-		csrf.SameSite(csrf.SameSiteLaxMode),
-	)
+	)(h)
 
-	// Создаём HTTP-сервер, оборачивая роутер через CSRF-middleware
-	srv := app.Server(cfg.HTTPAddr, csrfMw(router))
+	// server
+	srv := app.Server(cfg.Addr, h)
 
-	// Контекст для graceful shutdown (Ctrl+C / SIGTERM)
+	// graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// --- Асинхронный запуск сервера ---
 	go func() {
-		logger.Info("http: listening", "addr", srv.Addr, "env", cfg.Env, "app", cfg.AppName)
+		logger.Info("http: listening", "addr", cfg.Addr, "env", cfg.Env, "app", cfg.AppName)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("http: server error", "err", err)
 			os.Exit(1)
 		}
 	}()
 
-	// --- Ожидаем сигнал ---
 	<-ctx.Done()
 	logger.Info("http: shutdown started")
 
-	// --- Корректное завершение работы ---
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("http: shutdown error", "err", err)
 	} else {
 		logger.Info("http: shutdown complete")
 	}
+}
+
+func derive32(secret string) []byte {
+	sum := sha256.Sum256([]byte(secret))
+	return sum[:] // 32 байта
+}
+
+// простой HSTS-мидлвар только для prod (HTTPS обязателен)
+func hsts(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1 год, включая поддомены; закомментируй preload, если не используешь
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+		next.ServeHTTP(w, r)
+	})
 }

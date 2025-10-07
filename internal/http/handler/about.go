@@ -1,0 +1,17 @@
+package handler
+
+import (
+	"html/template"
+	"net/http"
+)
+
+func About(w http.ResponseWriter, r *http.Request) {
+	tpl := template.Must(template.ParseFiles(
+		"web/templates/layouts/base.gohtml",
+		"web/templates/partials/nav.gohtml",
+		"web/templates/partials/footer.gohtml",
+		"web/templates/pages/about.gohtml",
+	))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = tpl.ExecuteTemplate(w, "base", PageData{Title: "О нас"})
+}

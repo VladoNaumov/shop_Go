@@ -1,11 +1,7 @@
-body { background-color: #f8f9fa; }
-.max-400 { max-width: 400px; }
-
-.card {
-    border-radius: 1rem;
-    transition: 0.3s ease;
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
 }
-.card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.1);
+.container {
+    padding: 1rem;
 }
