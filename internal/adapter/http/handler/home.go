@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 // HTML-обработчик:
 // SSR для главной: Route -> (этот "контроллер") -> Template.

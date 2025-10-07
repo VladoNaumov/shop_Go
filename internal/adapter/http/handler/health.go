@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 // Простые JSON-эндпоинты для liveness/readiness.
 // SSR для главной: Route -> (этот "контроллер") -> json

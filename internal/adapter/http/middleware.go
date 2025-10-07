@@ -1,4 +1,4 @@
-package http
+package httprouter
 
 // Общие middleware: gzip, таймаут, recover, request id, real ip, логгер, безопасные заголовки.
 

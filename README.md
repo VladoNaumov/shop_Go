@@ -169,3 +169,49 @@ HTML-шаблоны для SSR.
 * **Технический долг:** линтер/тесты в CI с первого спринта.
 
 ---
+
+
+### 📄 `make.bat`
+
+```bat
+@echo off
+if "%1"=="run" (
+    echo 🔹 Running app...
+    go run ./cmd/app
+) else if "%1"=="build" (
+    echo 🔹 Building binary...
+    go build -o bin/app.exe ./cmd/app
+) else if "%1"=="start" (
+    echo 🔹 Starting binary...
+    bin\app.exe
+) else if "%1"=="clean" (
+    echo 🔹 Cleaning build files...
+    rmdir /s /q bin 2>nul
+) else if "%1"=="test" (
+    echo 🔹 Running Go tests...
+    go test ./... -v
+) else if "%1"=="lint" (
+    echo 🔹 Running Go formatter...
+    go fmt ./...
+    echo 🔹 Running Go vet...
+    go vet ./...
+    echo ✅ Lint check completed.
+) else (
+    echo Usage: make [run^|build^|start^|clean^|test^|lint]
+)
+```
+
+---
+
+## ⚙️ Теперь доступно:
+
+| Команда        | Описание                                           |
+| -------------- | -------------------------------------------------- |
+| `.\make run`   | запустить проект                                   |
+| `.\make build` | собрать бинарник `bin\app.exe`                     |
+| `.\make start` | запустить бинарник                                 |
+| `.\make clean` | удалить `bin`                                      |
+| `.\make test`  | запустить все Go-тесты                             |
+| `.\make lint`  | форматировать и проверить код (`go fmt`, `go vet`) |
+
+---

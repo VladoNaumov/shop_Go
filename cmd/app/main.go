@@ -36,7 +36,7 @@ func main() {
 
 	// Инициализация маршрутизатора
 	// Роутер (внутри подключены middleware, хендлеры, статика)
-	router := httpx.Router()
+	router := httpx.NewRouter()
 
 	// Создание HTTP-сервер с безопасными таймаутами
 	srv := app.Server(cfg.HTTPAddr, router)
