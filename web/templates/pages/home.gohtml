@@ -1,6 +1,16 @@
-{{define "content"}}
-<section>
-  <h1>{{.Title}}</h1>
-  <p>{{.Message}}</p>
-</section>
-{{end}}
+{{/* ИСПРАВЛЕНО:
+- Добавлен обёрточный шаблон страницы "home", который вызывает "base".
+- Определён свой "content" только для главной.
+*/}}
+{{ define "home" }}{{ template "base" . }}{{ end }}
+
+{{ define "content" }}
+    <section class="py-5 text-center">
+        <h1 class="display-5 fw-bold">{{ .View.Title }}</h1>
+        <p class="lead text-secondary">{{ .View.Message }}</p>
+
+        <div class="mt-4">
+            <a href="/form" class="btn btn-primary btn-lg">Открыть форму</a>
+        </div>
+    </section>
+{{ end }}

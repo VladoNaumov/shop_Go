@@ -27,6 +27,8 @@ func NewRouter() http.Handler {
 	r.Get("/readyz", handler.Ready)
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/about", handler.About)
+	r.Get("/form", handler.FormIndex)
+	r.Post("/form", handler.FormSubmit)
 
 	// статика
 	assetsDir := http.Dir(filepath.Clean("web/assets"))

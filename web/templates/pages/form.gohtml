@@ -1,0 +1,24 @@
+{{/* ИСПРАВЛЕНО:
+- Добавлен обёрточный шаблон страницы "form", который вызывает "base".
+- Свой "content" содержит форму — будет виден ТОЛЬКО на /form.
+*/}}
+{{ define "form" }}{{ template "base" . }}{{ end }}
+
+{{ define "content" }}
+    <div class="container py-5" style="max-width:540px;">
+        <h1 class="h3 mb-4">Форма обратной связи</h1>
+
+        <form method="POST" action="/form" class="card p-4 shadow-sm">
+            {{ .CSRFField }}
+            <div class="mb-3">
+                <label class="form-label" for="name">Ваше имя</label>
+                <input id="name" name="name" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="message">Сообщение</label>
+                <textarea id="message" name="message" class="form-control" rows="4" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Отправить</button>
+        </form>
+    </div>
+{{ end }}

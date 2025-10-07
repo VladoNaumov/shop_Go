@@ -1,20 +1,25 @@
 package handler
 
 import (
-	"html/template"
 	"net/http"
+
+	"github.com/gorilla/csrf"
 )
 
-var aboutTpl = template.Must(template.ParseFiles(
-	"web/templates/layouts/base.gohtml",
-	"web/templates/partials/nav.gohtml",
-	"web/templates/partials/footer.gohtml",
-	"web/templates/pages/about.gohtml",
-))
+type AboutVM struct {
+	Title string
+}
 
 func About(w http.ResponseWriter, r *http.Request) {
-	err := aboutTpl.ExecuteTemplate(w, "base", nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	data := PageData{
+		CSRFField: csrf.TemplateField(r),
+		CSRFToken: csrf.Token(r),
+		View:      AboutVM{Title: "О нас"},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tpl.ExecuteTemplate(w, "about", data); err != nil { // <-- рендерим "about", не "base"
+		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 }

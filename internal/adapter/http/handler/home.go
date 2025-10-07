@@ -1,43 +1,49 @@
-package handler
+// ИСПРАВЛЕНО:
+// - Рендерим НЕ "base", а "home" (обёртку страницы).
+// - Удалён второй лишний ExecuteTemplate.
 
-// HTML-обработчик:
-// SSR для главной: Route -> (этот "контроллер") -> Template.
-// Шаблоны встраиваем через embed, чтобы не ловить проблемы glob/слешей на Windows.
+package handler
 
 import (
 	"html/template"
 	"net/http"
+
+	"github.com/gorilla/csrf"
 )
 
-// Относительные пути заданы от текущего файла.
 var tpl = template.Must(template.ParseFiles(
 	"web/templates/layouts/base.gohtml",
 	"web/templates/partials/nav.gohtml",
 	"web/templates/partials/footer.gohtml",
 	"web/templates/pages/home.gohtml",
+	"web/templates/pages/form.gohtml",
+	"web/templates/pages/about.gohtml",
 ))
-
-// В неё кладутся данные, которые потом будут вставлены в HTML-шаблон (.tmpl).
 
 type HomeViewsModel struct {
 	Title   string
 	Message string
 }
 
-// http.ResponseWriter — куда писать ответ (HTML, JSON, текст и т.д.);
+type PageData struct {
+	CSRFField template.HTML
+	CSRFToken string
+	View      any
+}
 
 func HomeIndex(w http.ResponseWriter, r *http.Request) {
-
-	// Создание данных для шаблона
-	vm := HomeViewsModel{ // ViewModel
+	vm := HomeViewsModel{
 		Title:   "Главная",
 		Message: "Это стартовая страница. SSR на html/template + chi.",
 	}
-	// Установка типа контента
+	data := PageData{
+		CSRFField: csrf.TemplateField(r),
+		CSRFToken: csrf.Token(r),
+		View:      vm,
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	// Рендерим layout "base"; внутри он вставит блок {{block "content"}} из pages/home.tmpl
-	if err := tpl.ExecuteTemplate(w, "base", vm); err != nil {
-		http.Error(w, "template error", http.StatusInternalServerError)
+	if err := tpl.ExecuteTemplate(w, "home", data); err != nil {
+		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 }
