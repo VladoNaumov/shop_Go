@@ -20,7 +20,7 @@ func NewRouter() http.Handler {
 	r.Post("/form", handler.FormSubmit)
 
 	// статика (если нужна)
-	// r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir("web/assets"))))
+	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir("web/assets"))))
 
 	// health
 	r.Get("/healthz", handler.Health)
