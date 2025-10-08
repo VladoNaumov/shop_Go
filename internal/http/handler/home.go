@@ -3,9 +3,9 @@ package handler
 import (
 	"html/template"
 	"net/http"
-)
 
-type PageData struct{ Title string }
+	"github.com/gorilla/csrf"
+)
 
 func Home(w http.ResponseWriter, r *http.Request) {
 	tpl := template.Must(template.ParseFiles(
@@ -15,5 +15,8 @@ func Home(w http.ResponseWriter, r *http.Request) {
 		"web/templates/pages/home.gohtml",
 	))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = tpl.ExecuteTemplate(w, "base", PageData{Title: "Главная"})
+	_ = tpl.ExecuteTemplate(w, "base", PageData{
+		Title:     "Главная",
+		CSRFField: csrf.TemplateField(r),
+	})
 }

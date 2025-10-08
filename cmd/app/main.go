@@ -24,6 +24,17 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
+	// sanity-checks для prod
+	if cfg.Env == "prod" {
+		if cfg.CSRFKey == "" {
+			logger.Error("missing CSRF_KEY in prod")
+			os.Exit(1) // фаталим прод без ключа
+		}
+		if !cfg.Secure {
+			logger.Warn("APP_ENV=prod but Secure=false; HTTPS/HSTS disabled")
+		}
+	}
+
 	// --- 2. Создаём маршрутизатор (роутер) ---
 	router := core.NewRouter() // все обработчики и маршруты внутри пакета internal/http
 

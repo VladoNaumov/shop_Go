@@ -48,11 +48,25 @@ if "%1"=="test" (
 )
 
 if "%1"=="lint" (
-    echo  Running Go fmt and vet...
-    go fmt ./...
-    go vet ./...
-    echo Lint check completed.
-    exit /b
+    echo Running golangci-lint...
+
+    if not exist "%USERPROFILE%\go\bin\golangci-lint.exe" (
+        echo golangci-lint not found. Installing...
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    )
+
+    if exist "%USERPROFILE%\go\bin\golangci-lint.exe" (
+        "%USERPROFILE%\go\bin\golangci-lint.exe" run
+        if errorlevel 1 (
+            echo Lint errors found!
+            exit /b 1
+        )
+        echo Lint check completed successfully.
+        exit /b 0
+    ) else (
+        echo golangci-lint still not found. Add %USERPROFILE%\go\bin to PATH and retry.
+        exit /b 1
+    )
 )
 
 if "%1"=="tidy" (
