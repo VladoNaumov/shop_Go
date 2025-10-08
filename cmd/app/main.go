@@ -5,12 +5,13 @@ import (
 	"crypto/sha256"
 	"errors"
 	"log/slog"
-	"myApp/internal/core"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"myApp/internal/core"
 
 	"github.com/gorilla/csrf"
 )

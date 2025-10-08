@@ -1,47 +1,9 @@
 
 ***Проект интернет магазина ( Go 1.25.1 )***
 
----
-## итоговая структура
+## Task 1. 
 
-```
-myApp/
-│
-├─ cmd/
-│  └─ app/
-│     └─ main.go                 # запуск HTTP-сервера, graceful shutdown, CSRF, HSTS
-│
-├── internal/
-│   ├── core/
-│   │    ├── server.go       // Фабрика http.Server с таймаутами
-│   │    ├── config.go       // Конфигурация приложения (AppName, Addr, Env, Secure, ...)
-│   │    ├── router.go       //  маршрутизация (chi.Router)
-│   │    ├── common.go       // Базовые middleware (лог, recover, timeout, CSP)
-│   │    └── security.go     // Заголовки безопасности (CSP, XFO, MIME, Referrer)
-│   └─ http/
-│     └─ handler/
-│        ├─ home.go              # главная страница
-│        ├─ form.go              # форма + PRG-редирект
-│        └─ about.go             # страница «О нас»
-│
-├─ web/
-│  └─ templates/
-│     ├─ layouts/base.gohtml     # {{define "base"}} ... {{block "content" .}}{{end}} ... {{end}}
-│     ├─ partials/nav.gohtml     # {{define "nav"}} ... {{end}}
-│     ├─ partials/footer.gohtml  # {{define "footer"}} ... {{end}}
-│     └─ pages/
-│        ├─ home.gohtml          # {{define "content"}} контент главной {{end}}
-│        ├─ form.gohtml          # {{define "content"}} форма {{end}}
-│        └─ about.gohtml         # {{define "content"}} о нас {{end}}
-│
-├─ make.bat                      # запуск, сборка, тесты, tidy; подхватывает .env
-├─ go.mod                        # module awesomeProject
-└─ go.sum
-```
-
----
-
-### **всё ядро веб-приложения**
+### **ядро WEB server**
 
 ```
 myApp/
@@ -52,7 +14,7 @@ myApp/
 │    └─ core/
 │       ├── server.go       // Фабрика http.Server с таймаутами
 │       ├── config.go       // Конфигурация приложения (AppName, Addr, Env, Secure, ...)
-│       ├── router.go       // (пока не показан) — маршрутизация (chi.Router)
+│       ├── router.go       // маршрутизация (chi.Router)
 │       ├── common.go       // Базовые middleware (лог, recover, timeout, CSP)
 │       └── security.go     // Заголовки безопасности (CSP, XFO, MIME, Referrer)
 ```
@@ -61,13 +23,13 @@ myApp/
 
 ### 🔧 Что уже реализовано
 
-| Компонент                    | Что делает                                                                         |
-| ---------------------------- | ---------------------------------------------------------------------------------- |
-| **`main.go`**                | Главная точка запуска. Настраивает логгер, конфиг, CSRF, HSTS и graceful shutdown. |
-| **`config.go`**       | Все параметры приложения в одном месте. Можно запускать без `.env`.                |
+| Компонент                | Что делает                                                                         |
+|--------------------------| ---------------------------------------------------------------------------------- |
+| **`main.go`**            | Главная точка запуска. Настраивает логгер, конфиг, CSRF, HSTS и graceful shutdown. |
+| **`config.go`**          | Все параметры приложения в одном месте. Можно запускать без `.env`.                |
 | **`server.go`**          | Создаёт безопасный `http.Server` с таймаутами и базовой защитой от slow clients.   |
-| **`common.go`**   | Подключает стандартные middleware (лог, IP, panic-recover, timeout, CSP).          |
-| **`security.go`** | Добавляет заголовки безопасности (CSP, X-Frame-Options, Referrer-Policy и др.).    |
+| **`common.go`**          | Подключает стандартные middleware (лог, IP, panic-recover, timeout, CSP).          |
+| **`security.go`**        | Добавляет заголовки безопасности (CSP, X-Frame-Options, Referrer-Policy и др.).    |
 
 ---
 
@@ -81,30 +43,19 @@ myApp/
 
 ---
 
-Следующий шаг — добавить **роутер и обработчики** (например, `/`, `/form`, `/api/...`),
+## Task 2.
+
+добавить **роутер и обработчики** (например, `/`, `/form`, `/about`, `/api/...`),
 чтобы сервер начал **отдавать страницы или JSON-ответы**.
 
 
-
 ---
-
-## 🔹 Что уже сделано
 
 ✅ **Рабочие страницы:**
 
 * `/` — главная
 * `/about` — о компании
 * `/form` (GET/POST) — форма с редиректом `303` после отправки
-
-✅ **Простой запуск:**
-
-```bash
-make run      # загрузит .env и запустит go run ./cmd/app
-make build    # соберёт bin\app.exe
-make start    # запустит бинарь
-make tidy     # обновит зависимости
-make test     # прогоним тесты
-```
 
 ---
 
@@ -133,7 +84,7 @@ func Contacts(w http.ResponseWriter, r *http.Request) {
     "web/templates/layouts/base.gohtml",
     "web/templates/partials/nav.gohtml",
     "web/templates/partials/footer.gohtml",
-    "web/templates/pages/contacts.gohtml",
+    "web/templates/pages/contacts.gohtml",  // <--- new
   ))
   w.Header().Set("Content-Type", "text/html; charset=utf-8")
   _ = tpl.ExecuteTemplate(w, "base", struct{ Title string }{"Контакты"})
@@ -143,79 +94,32 @@ func Contacts(w http.ResponseWriter, r *http.Request) {
 3️⃣ Добавь маршрут в `router.go`:
 
 ```go
+
 r.Get("/contacts", handler.Contacts)
+
 ```
 
 # Как запускать
 
 * Windows (батник): `make run`
   или: `go run ./cmd/app`
-* Если удалял `go.mod`:
-  `go mod init myApp && go mod tidy`
+* Если удалял `go.mod`: `go mod init myApp && go mod tidy`
 
-
-
-
-  
-### 📄 `make.bat`
-
-```bat
-@echo off
-if "%1"=="run" (
-    echo 🔹 Running app...
-    go run ./cmd/app
-) else if "%1"=="build" (
-    echo 🔹 Building binary...
-    go build -o bin/app.exe ./cmd/app
-) else if "%1"=="start" (
-    echo 🔹 Starting binary...
-    bin\app.exe
-) else if "%1"=="clean" (
-    echo 🔹 Cleaning build files...
-    rmdir /s /q bin 2>nul
-) else if "%1"=="test" (
-    echo 🔹 Running Go tests...
-    go test ./... -v
-) else if "%1"=="lint" (
-    echo 🔹 Running Go formatter...
-    go fmt ./...
-    echo 🔹 Running Go vet...
-    go vet ./...
-    echo ✅ Lint check completed.
-) else (
-    echo Usage: make [run^|build^|start^|clean^|test^|lint]
-)
-```
-
----
-
-## ⚙️ Теперь доступно:
-
-| Команда        | Описание                                           |
-| -------------- | -------------------------------------------------- |
-| `.\make run`   | запустить проект                                   |
-| `.\make build` | собрать бинарник `bin\app.exe`                     |
-| `.\make start` | запустить бинарник                                 |
-| `.\make clean` | удалить `bin`                                      |
-| `.\make test`  | запустить все Go-тесты                             |
-| `.\make lint`  | форматировать и проверить код (`go fmt`, `go vet`) |
-
----
 
 
 # Что уже сделано ✅
 
-* **Структура проекта (Variant A, без embed)**: `cmd/app`, `internal/{app,config,http}`, `web/templates`.
+* **Структура проекта (без embed)**: `cmd/app`, `internal/{app,config,http}`, `web/templates`.
 * **Маршруты**: `/`, `/about`, `/form` (GET/POST с PRG).
 * **Шаблоны разделены per-page**: каждый хендлер парсит **свой** `pages/<page>.gohtml` + общий `base/nav/footer`.
 * **CSRF middleware**: подключён в `cmd/app/main.go` через `csrf.Protect(...)`.
-* **Конфиг из env**: `internal/config/config.go` (поля: `AppName`, `Addr`, `Env`, `CSRFKey`, `Secure`).
+* **Конфиг** config.go
 * **Таймауты сервера**: `internal/app/server.go`.
 * **HSTS в prod**: мидлварь `hsts` в `main.go` (включается только при `APP_ENV=prod`).
 * **Запуск/сборка**: `make run`, `make build`, `make start`.
 
 
-# Что осталось сделать (обновлённая дорожная карта) 🚧
+# Что осталось сделать? (обновлённая дорожная карта) 🚧
 
 1. **CSRF в шаблонах — довести до конца**
 
@@ -293,6 +197,44 @@ if "%1"=="run" (
     })
   }
   ```
+
+---
+## итоговая структура
+
+```
+myApp/
+│
+├─ cmd/
+│  └─ app/
+│     └─ main.go                 # запуск HTTP-сервера, graceful shutdown, CSRF, HSTS
+│
+├── internal/
+│   ├── core/
+│   │    ├── server.go       // Фабрика http.Server с таймаутами
+│   │    ├── config.go       // Конфигурация приложения (AppName, Addr, Env, Secure, ...)
+│   │    ├── router.go       //  маршрутизация (chi.Router)
+│   │    ├── common.go       // Базовые middleware (лог, recover, timeout, CSP)
+│   │    └── security.go     // Заголовки безопасности (CSP, XFO, MIME, Referrer)
+│   └─ http/
+│     └─ handler/
+│        ├─ home.go              # главная страница
+│        ├─ form.go              # форма + PRG-редирект
+│        └─ about.go             # страница «О нас»
+│
+├─ web/
+│  └─ templates/
+│     ├─ layouts/base.gohtml     # {{define "base"}} ... {{block "content" .}}{{end}} ... {{end}}
+│     ├─ partials/nav.gohtml     # {{define "nav"}} ... {{end}}
+│     ├─ partials/footer.gohtml  # {{define "footer"}} ... {{end}}
+│     └─ pages/
+│        ├─ home.gohtml          # {{define "content"}} контент главной {{end}}
+│        ├─ form.gohtml          # {{define "content"}} форма {{end}}
+│        └─ about.gohtml         # {{define "content"}} о нас {{end}}
+│
+├─ make.bat                      # запуск, сборка, тесты, tidy; подхватывает .env
+├─ go.mod                        # module awesomeProject
+└─ go.sum
+```
 
 компактный **план-график MVP** по спринтам с зависимостями, пакетами и критериями “готово”.
 
