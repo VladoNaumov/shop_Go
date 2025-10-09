@@ -10,3 +10,7 @@
 2025/10/09 21:50:44 main.go:54: INFO: http: listening addr=:8080 env=dev app=myApp
 2025/10/09 21:57:15 main.go:62: INFO: http: shutdown started
 2025/10/09 21:57:15 main.go:70: INFO: http: shutdown complete
+2025/10/09 22:03:26 logfile.go:43: === Новый лог-файл ===
+2025/10/09 22:03:26 main.go:54: INFO: http: listening addr=:8080 env=dev app=myApp
+2025/10/09 22:03:51 main.go:62: INFO: http: shutdown started
+2025/10/09 22:03:51 main.go:70: INFO: http: shutdown complete
