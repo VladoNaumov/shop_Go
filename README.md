@@ -15,29 +15,29 @@
 myApp/
 ├─ cmd/
 │  └─ app/
-│     └─ main.go                   # entrypoint: конфиг, логи, graceful, запуск app.New()+Server
+│     └─ main.go                    # entrypoint: конфиг, логи, graceful, запуск app.New()+Server
 │
 ├─ internal/
 │  ├─ app/
-│  │  ├─ app.go                    # сборка приложения: chi.Router + middleware + статика + маршруты + 404
-│  │  └─ server.go                 # http.Server с безопасными таймаутами
+│  │  ├─ app.go                     # сборка приложения: chi.Router + middleware + статика + маршруты + 404
+│  │  └─ server.go                  # http.Server с безопасными таймаутами
 │  │
 │  ├─ core/
-│  │  ├─ config.go                 # конфиг (ENV), проверки для prod
-│  │  ├─ errors.go                 # AppError, фабрики (BadRequest, NotFound, Internal…)
-│  │  ├─ response.go               # JSON(), NoContent(), Fail() (RFC7807 style)
-│  │  └─ logfile.go                # логи по датам, авто-ротация (опциональная) и очистка
+│  │  ├─ config.go                  # конфиг (ENV), проверки для prod
+│  │  ├─ errors.go                  # AppError, фабрики (BadRequest, NotFound, Internal…)
+│  │  ├─ response.go                # JSON(), NoContent(), Fail() (RFC 7807 style)
+│  │  └─ logfile.go                 # логи по датам, авто-ротация и очистка
 │  │
 │  └─ http/
 │     ├─ handler/
-│     │  ├─ common.go              # PageData, csrfField, render()
-│     │  ├─ home.go                # /
-│     │  ├─ about.go               # /about
-│     │  ├─ form.go                # /form (GET/POST) + валидация validator/v10 + PRG
-│     │  └─ misc.go                # /healthz (JSON), NotFound (404)
+│     │  ├─ home.go                 # /
+│     │  ├─ about.go                # /about
+│     │  ├─ form.go                 # /form (GET/POST) + валидация validator/v10 + PRG
+│     │  └─ misc.go                 # /healthz (JSON) и NotFound (404)
 │     │
 │     └─ middleware/
-│        └─ security.go            # CSP, XFO, Referrer, nosniff, Permissions, COOP, HSTS, CacheStatic, Keep-Alive
+│        └─ security.go             # CSP, XFO, Referrer, nosniff, Permissions, COOP, HSTS, CacheStatic, Keep-Alive
+│
 │
 ├─ web/
 │  ├─ assets/                      # статические файлы (CSS/JS/изображения/шрифты)
