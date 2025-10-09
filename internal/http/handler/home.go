@@ -1,5 +1,6 @@
 package handler
 
+//home.go
 import (
 	"html/template"
 	"net/http"
