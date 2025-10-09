@@ -1,10 +1,12 @@
 package core
 
 import (
-	"github.com/go-chi/chi/v5"
-	"myApp/internal/http/handler"
 	"net/http"
-	"os" // [ADDED] для проверки окружения
+	"os"
+
+	"github.com/go-chi/chi/v5"
+
+	"myApp/internal/http/handler"
 )
 
 // NewRouter создаёт chi-маршрутизатор и подключает все middleware.

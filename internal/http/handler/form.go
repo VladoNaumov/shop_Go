@@ -3,7 +3,6 @@ package handler
 import (
 	"html/template"
 	"net/http"
-	// "net/mail"  // [REMOVED] Валидируем email через validator, а не через net/mail
 	"strings"
 
 	"github.com/go-playground/validator/v10"

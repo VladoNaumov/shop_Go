@@ -15,8 +15,9 @@ func Home(w http.ResponseWriter, r *http.Request) {
 		"web/templates/pages/home.gohtml",
 	))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = tpl.ExecuteTemplate(w, "base", PageData{
-		Title:     "Главная",
-		CSRFField: csrf.TemplateField(r),
-	})
+	_ = tpl.ExecuteTemplate(w, "base",
+		PageData{
+			Title:     "Главная",
+			CSRFField: csrf.TemplateField(r),
+		})
 }

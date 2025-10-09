@@ -16,7 +16,10 @@ myApp/
 │       ├── config.go       // Конфигурация приложения (AppName, Addr, Env, Secure, ...)
 │       ├── router.go       // маршрутизация (chi.Router)
 │       ├── common.go       // Базовые middleware (лог, recover, timeout, CSP)
-│       └── security.go     // Заголовки безопасности (CSP, XFO, MIME, Referrer)
+│       ├── security.go     // Заголовки безопасности (CSP, XFO, MIME, Referrer)
+│       ├── logger.go       // логирование (не реализовано)
+│       ├── errors.go       // унифицированные ошибки (не реализовано)
+│       └── response.go     // стандартные ответы (не реализовано)
 ```
 
 ---
@@ -40,6 +43,41 @@ myApp/
 ✅  централизованные middleware
 ✅  защита (CSP, CSRF, HSTS, timeout, recover)
 ✅  читаемая и поддерживаемая архитектура
+
+
+Вот полный список — **всё, что обычно входит в ядро (`/internal/core`)** современного Go-приложения:
+
+---
+
+### 🧩 Обязательные файлы ядра
+
+1. `config.go` — конфигурация приложения
+2. `server.go` — создание и настройка HTTP-сервера
+3. `router.go` — инициализация и регистрация маршрутов
+4. `common.go` — подключение общих middleware
+5. `security.go` — заголовки безопасности
+6. `logger.go` — настройка глобального логгера
+7. `errors.go` — унифицированная обработка ошибок
+8. `response.go` — стандартные функции для HTTP-ответов (JSON, error, redirect)
+
+---
+
+### ⚙️ Дополнительные (рекомендуемые) файлы ядра
+
+9. `context.go` — функции для работы с `context.Context` (userID, traceID и т.п.)
+10. `utils.go` — вспомогательные утилиты (хэш, UUID, форматирование, время)
+11. `graceful.go` — отдельная реализация graceful shutdown (если не в main)
+12. `env.go` — чтение переменных окружения и их валидация
+13. `metrics.go` — метрики (Prometheus, health-check)
+14. `buildinfo.go` — информация о сборке (версия, commit, дата)
+
+---
+
+📘
+Твои текущие файлы:
+`config.go`, `server.go`, `common.go`, `security.go`, `router.go` — ✅ уже готовы.
+Осталось добавить:
+➡️ `logger.go`, `errors.go`, `response.go` — чтобы ядро было **полностью завершено и самодостаточно**.
 
 ---
 
@@ -177,18 +215,23 @@ myApp/
 │  └─ app/
 │     └─ main.go                 # запуск HTTP-сервера, graceful shutdown, CSRF, HSTS
 │
-├── internal/
-│   ├── core/
-│   │    ├── server.go       // Фабрика http.Server с таймаутами
-│   │    ├── config.go       // Конфигурация приложения (AppName, Addr, Env, Secure, ...)
-│   │    ├── router.go       //  маршрутизация (chi.Router)
-│   │    ├── common.go       // Базовые middleware (лог, recover, timeout, CSP)
-│   │    └── security.go     // Заголовки безопасности (CSP, XFO, MIME, Referrer)
-│   └─ http/
+├──internal/
+│  ├── core/
+│  │    ├── server.go       // Фабрика http.Server с таймаутами
+│  │    ├── config.go       // Конфигурация приложения (AppName, Addr, Env, Secure, ...)
+│  │    ├── router.go       //  маршрутизация (chi.Router)
+│  │    ├── common.go       // Базовые middleware (лог, recover, timeout, CSP)
+│  │    ├── security.go     // Заголовки безопасности (CSP, XFO, MIME, Referrer)
+│  │    ├── logger.go       // логирование (не реализовано)
+│  │    ├── errors.go       // унифицированные ошибки (не реализовано)
+│  │    └── response.go     // стандартные ответы (не реализовано)
+│  │
+│  └─ http/
 │     └─ handler/
 │        ├─ home.go              # главная страница
 │        ├─ form.go              # форма + PRG-редирект
 │        └─ about.go             # страница «О нас»
+│
 │
 ├─ web/
 │  └─ templates/
@@ -199,6 +242,7 @@ myApp/
 │        ├─ home.gohtml          # {{define "content"}} контент главной {{end}}
 │        ├─ form.gohtml          # {{define "content"}} форма {{end}}
 │        └─ about.gohtml         # {{define "content"}} о нас {{end}}
+
 │
 ├─ make.bat                      # запуск, сборка, тесты, tidy; подхватывает .env
 ├─ go.mod                        # module awesomeProject

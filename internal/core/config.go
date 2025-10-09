@@ -25,7 +25,7 @@ func Load() Config {
 		Secure:  getEnv("SECURE", "") == "true",
 	}
 
-	// --- [ADDED] Безопасная проверка ключа в продакшене ---
+	// --- Безопасная проверка ключа в продакшене ---
 	if cfg.Env == "prod" {
 		if cfg.CSRFKey == "dev-dev-key-change-me-please" || len(cfg.CSRFKey) < 8 {
 			log.Fatal("CONFIG ERROR: invalid CSRF_KEY in production")
