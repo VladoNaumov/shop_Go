@@ -1,37 +1,67 @@
 package core
 
 import (
+	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
-// InitDailyLog — инициализирует лог-файл формата logs/DD-MM-YYYY.log.
-// Если директории "logs" нет — создаёт её.
-// Старые логи (старше 7 дней) автоматически удаляются.
+// InitDailyLog — инициализирует лог-файлы формата logs/DD-MM-YYYY.log
+// и logs/errors-DD-MM-YYYY.log.
+// Старые файлы (старше 7 дней) автоматически удаляются.
 func InitDailyLog() {
 	// Создаём директорию logs, если её нет
 	_ = os.MkdirAll("logs", 0755)
 
-	// Формат имени: день-месяц-год
-	filename := time.Now().Format("02-01-2006") + ".log"
-	path := filepath.Join("logs", filename)
+	// Форматы имен файлов: день-месяц-год
+	dateStr := time.Now().Format("02-01-2006")
+	mainPath := filepath.Join("logs", dateStr+".log")
+	errPath := filepath.Join("logs", "errors-"+dateStr+".log")
 
-	// Открываем файл (создаём, если нет)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	// --- Открываем основной лог ---
+	mainFile, err := os.OpenFile(mainPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		log.Printf("Не удалось открыть лог-файл: %v", err)
+		log.Printf("Не удалось открыть основной лог-файл: %v", err)
 		return
 	}
 
-	// Перенаправляем стандартный лог в файл
-	log.SetOutput(f)
+	// --- Открываем error.log ---
+	errorFile, err := os.OpenFile(errPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("Не удалось открыть error лог-файл: %v", err)
+		return
+	}
+
+	// --- Создаём writer, который дублирует вывод ---
+	logWriter := io.MultiWriter(mainFile, os.Stdout, newErrorSplitter(errorFile))
+
+	log.SetOutput(logWriter)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Println("=== Новый лог-файл ===")
 
-	// Запускаем очистку старых логов (асинхронно)
+	// Асинхронная очистка старых логов
 	go cleanupOldLogs("logs", 7)
+}
+
+// newErrorSplitter — обёртка, которая дублирует только ERROR-записи в error.log
+func newErrorSplitter(errorFile *os.File) io.Writer {
+	return writerFunc(func(p []byte) (n int, err error) {
+		line := string(p)
+		if strings.Contains(strings.ToUpper(line), "ERROR") {
+			// Пишем в error.log
+			_, _ = errorFile.Write(p)
+		}
+		return os.Stdout.Write(p) // возвращаем стандартное поведение
+	})
+}
+
+type writerFunc func(p []byte) (n int, err error)
+
+func (f writerFunc) Write(p []byte) (n int, err error) {
+	return f(p)
 }
 
 // cleanupOldLogs удаляет лог-файлы старше указанного количества дней.
@@ -42,17 +72,14 @@ func cleanupOldLogs(dir string, maxAgeDays int) {
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
-
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
-
 		info, err := file.Info()
 		if err != nil {
 			continue
 		}
-
 		if info.ModTime().Before(cutoff) {
 			_ = os.Remove(filepath.Join(dir, file.Name()))
 		}
