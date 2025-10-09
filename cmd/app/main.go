@@ -1,10 +1,12 @@
 package main
 
+// main.go
+
 import (
 	"context"
 	"crypto/sha256"
 	"errors"
-	"log/slog"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,28 +19,37 @@ import (
 )
 
 func main() {
-	// --- 1. Загружаем конфиг и настраиваем логгер ---
-	cfg := core.Load() // читаем настройки (порт, окружение, ключ CSRF и т.д.)
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo, // уровень логирования: INFO и выше
-	}))
-	slog.SetDefault(logger)
+	// --- 1. Загружаем конфиг ---
+	cfg := core.Load()
 
-	// sanity-checks для prod
+	// --- 2. Настраиваем лог-файл (по дате) ---
+	// Создаст logs/DD-MM-YYYY.log и перенаправит стандартный лог туда.
+	core.InitDailyLog()
+
+	// 🔁 --- 3. Автоматическая ротация логов каждый день в полночь ---
+	go func() {
+		for {
+			next := time.Now().Add(24 * time.Hour).Truncate(24 * time.Hour)
+			time.Sleep(time.Until(next))
+			core.InitDailyLog() // переключаемся на новый файл logs/DD-MM-YYYY.log
+		}
+	}()
+
+	// --- 4. Санити-проверки для prod ---
 	if cfg.Env == "prod" {
 		if cfg.CSRFKey == "" {
-			logger.Error("missing CSRF_KEY in prod")
+			log.Println("ERROR: missing CSRF_KEY in prod")
 			os.Exit(1) // фаталим прод без ключа
 		}
 		if !cfg.Secure {
-			logger.Warn("APP_ENV=prod but Secure=false; HTTPS/HSTS disabled")
+			log.Println("WARN: APP_ENV=prod but Secure=false; HTTPS/HSTS disabled")
 		}
 	}
 
-	// --- 2. Создаём маршрутизатор (роутер) ---
+	// --- 5. Создаём маршрутизатор (роутер) ---
 	router := core.NewRouter() // все обработчики и маршруты внутри пакета internal/http
 
-	// --- 3. Оборачиваем роутер дополнительными мидлварами ---
+	// --- 6. Оборачиваем роутер дополнительными мидлварами ---
 	var h http.Handler = router
 
 	// В продакшене включаем HSTS (строгая политика HTTPS)
@@ -46,7 +57,7 @@ func main() {
 		h = hsts(h)
 	}
 
-	// --- 4. Настраиваем CSRF-защиту ---
+	// --- 7. Настраиваем CSRF-защиту ---
 	// Gorilla CSRF требует 32-байтовый ключ, берём SHA256 от строки из конфига.
 	csrfKey := derive32(cfg.CSRFKey)
 	h = csrf.Protect(
@@ -57,36 +68,36 @@ func main() {
 		csrf.Path("/"),                      // CSRF-токен действует на весь сайт
 	)(h)
 
-	// --- 5. Создаём HTTP-сервер ---
+	// --- 8. Создаём HTTP-сервер ---
 	srv := core.Server(cfg.Addr, h)
 
-	// --- 6. Настраиваем "graceful shutdown" (мягкое завершение) ---
+	// --- 9. Настраиваем "graceful shutdown" (мягкое завершение) ---
 	// Перехватываем сигналы ОС: Ctrl+C или SIGTERM (от Docker/сервиса)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// --- 7. Запускаем сервер в отдельной горутине ---
+	// --- 10. Запускаем сервер в отдельной горутине ---
 	go func() {
-		logger.Info("http: listening", "addr", cfg.Addr, "env", cfg.Env, "app", cfg.AppName)
+		log.Printf("INFO: http: listening addr=%s env=%s app=%s", cfg.Addr, cfg.Env, cfg.AppName)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			// Ошибка запуска сервера — логируем и завершаем процесс
-			logger.Error("http: server error", "err", err)
+			log.Printf("ERROR: http: server error: %v", err)
 			os.Exit(1)
 		}
 	}()
 
-	// --- 8. Ждём сигнал завершения ---
+	// --- 11. Ждём сигнал завершения ---
 	<-ctx.Done()
-	logger.Info("http: shutdown started")
+	log.Println("INFO: http: shutdown started")
 
-	// --- 9. Завершаем сервер с таймаутом 10 секунд ---
+	// --- 12. Завершаем сервер с таймаутом 10 секунд ---
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("http: shutdown error", "err", err)
+		log.Printf("ERROR: http: shutdown error: %v", err)
 	} else {
-		logger.Info("http: shutdown complete")
+		log.Println("INFO: http: shutdown complete")
 	}
 }
 

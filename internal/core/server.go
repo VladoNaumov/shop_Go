@@ -1,5 +1,7 @@
 package core
 
+// server.go
+
 import (
 	"net/http"
 	"time"

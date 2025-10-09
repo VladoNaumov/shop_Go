@@ -1,0 +1,2 @@
+2025/10/09 19:46:29 logfile.go:31: === Новый лог-файл ===
+2025/10/09 19:46:29 main.go:81: INFO: http: listening addr=:8080 env=dev app=myApp

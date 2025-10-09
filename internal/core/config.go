@@ -1,5 +1,7 @@
 package core
 
+// config.go
+
 import (
 	"log"
 	"os"
