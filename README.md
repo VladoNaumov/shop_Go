@@ -37,7 +37,7 @@ myApp/
 │     │  └─ misc.go                # /healthz (JSON), NotFound (404)
 │     │
 │     └─ middleware/
-│        ├─ security.go            # CSP, XFO, Referrer, nosniff, Permissions, COOP, HSTS, CacheStatic, Keep-Alive
+│        └─ security.go            # CSP, XFO, Referrer, nosniff, Permissions, COOP, HSTS, CacheStatic, Keep-Alive
 │
 ├─ web/
 │  ├─ assets/                      # статические файлы (CSS/JS/изображения/шрифты)
