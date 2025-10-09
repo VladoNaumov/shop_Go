@@ -1,23 +1,45 @@
 package core
 
+import (
+	"log"
+	"os"
+	"strings"
+)
+
 // Config — структура с настройками приложения.
-// Здесь собираются все параметры, которые могут понадобиться серверу.
 type Config struct {
-	AppName string // Название приложения (используется в логах и заголовках)
-	Addr    string // Адрес и порт, на котором слушает HTTP-сервер
-	Env     string // Окружение: "dev" (разработка) или "prod" (продакшен)
-	CSRFKey string // Секретный ключ для CSRF-защиты (ровно 32 байта после хеша)
-	Secure  bool   // Если true — сервер работает только по HTTPS (для prod)
+	AppName string
+	Addr    string
+	Env     string
+	CSRFKey string
+	Secure  bool
 }
 
-// Load возвращает конфигурацию приложения.
-// В этой версии всё задаётся прямо в коде, без переменных окружения.
+// Load читает конфигурацию из переменных окружения (или задаёт дефолты).
 func Load() Config {
-	return Config{
-		AppName: "myApp",                        // Имя приложения
-		Addr:    ":8080",                        // Адрес HTTP-сервера (":8080" = любой IP, порт 8080)
-		Env:     "dev",                          // Режим работы: dev или prod
-		CSRFKey: "dev-dev-key-change-me-please", // Секретный ключ для CSRF (замени перед деплоем)
-		Secure:  false,                          // В dev режиме HTTPS не требуется
+	cfg := Config{
+		AppName: getEnv("APP_NAME", "myApp"),
+		Addr:    getEnv("HTTP_ADDR", ":8080"),
+		Env:     getEnv("APP_ENV", "dev"),
+		CSRFKey: getEnv("CSRF_KEY", "dev-dev-key-change-me-please"),
+		Secure:  getEnv("SECURE", "") == "true",
 	}
+
+	// --- Безопасная проверка ключа в продакшене ---
+	if cfg.Env == "prod" {
+		if cfg.CSRFKey == "dev-dev-key-change-me-please" || len(cfg.CSRFKey) < 8 {
+			log.Fatal("CONFIG ERROR: invalid CSRF_KEY in production")
+		}
+	}
+
+	return cfg
+}
+
+// getEnv возвращает переменную окружения или значение по умолчанию.
+func getEnv(key, def string) string {
+	val := strings.TrimSpace(os.Getenv(key))
+	if val == "" {
+		return def
+	}
+	return val
 }

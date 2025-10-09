@@ -3,6 +3,8 @@ package handler
 import (
 	"html/template"
 	"net/http"
+
+	"github.com/gorilla/csrf"
 )
 
 func About(w http.ResponseWriter, r *http.Request) {
@@ -13,5 +15,9 @@ func About(w http.ResponseWriter, r *http.Request) {
 		"web/templates/pages/about.gohtml",
 	))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = tpl.ExecuteTemplate(w, "base", PageData{Title: "О нас"})
+	_ = tpl.ExecuteTemplate(w, "base",
+		PageData{
+			Title:     "О нас",
+			CSRFField: csrf.TemplateField(r),
+		})
 }
