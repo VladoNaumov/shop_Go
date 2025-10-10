@@ -1,9 +1,10 @@
 package app
 
-// app.go — собирает приложение как в Echo: middleware + маршруты + статика + 404
-// но на chi/net/http (без фреймворка).
-
+// app.go
 import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"time"
 
@@ -14,26 +15,41 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/csrf"
+	"golang.org/x/time/rate"
 )
 
+// New собирает приложение (OWASP A05).
 func New(cfg core.Config, csrfKey []byte) http.Handler {
 	r := chi.NewRouter()
 
-	// --- middleware (как в Echo app.go) ---
+	// Генерация nonce для CSP (OWASP A03).
+	nonce, err := generateNonce()
+	if err != nil {
+		core.LogError("Failed to generate nonce", map[string]interface{}{"error": err.Error()})
+		nonce = ""
+	}
+
+	// Передача nonce в handlers через context.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), "nonce", nonce)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+
+	// Middleware (OWASP A05, A09).
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(15 * time.Second))
-	r.Use(mw.SecureHeaders)       // CSP, XFO, Referrer, MIME, Permissions, COOP
-	r.Use(mw.ServerKeepAliveHint) // необязательно: выставляет Keep-Alive
+	r.Use(mw.SecureHeaders(nonce))
+	r.Use(rateLimit(100, 1*time.Second))
 
-	// HSTS (только для HTTPS/прода)
 	if cfg.Secure {
-		r.Use(mw.HSTS)
+		r.Use(mw.HSTS(cfg.Env == "prod"))
 	}
 
-	// CSRF (gorilla) — токен доступен как csrf.TemplateField(r) в шаблонах
 	r.Use(csrf.Protect(
 		csrfKey,
 		csrf.Secure(cfg.Secure),
@@ -41,24 +57,47 @@ func New(cfg core.Config, csrfKey []byte) http.Handler {
 		csrf.HttpOnly(true),
 		csrf.Path("/"),
 	))
+	if !cfg.Secure {
+		core.LogError("CSRF running without HTTPS in non-prod", nil)
+	}
 
-	// --- статика ---
+	// Статические файлы (OWASP A05).
 	static := http.FileServer(http.Dir("web/assets"))
-	// кэш для продакшена
 	if cfg.Env == "prod" {
 		static = mw.CacheStatic(static)
 	}
 	r.Handle("/assets/*", http.StripPrefix("/assets/", static))
 
-	// --- маршруты (как routes.go в Echo) ---
+	// Маршруты.
 	r.Get("/", handler.Home)
 	r.Get("/about", handler.About)
 	r.Get("/form", handler.FormIndex)
 	r.Post("/form", handler.FormSubmit)
 	r.Get("/healthz", handler.Health)
-
-	// --- 404 в самом конце ---
 	r.NotFound(handler.NotFound)
 
 	return r
+}
+
+// generateNonce создаёт nonce для CSP (OWASP A03).
+func generateNonce() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
+}
+
+// rateLimit ограничивает запросы (OWASP A05).
+func rateLimit(rps float64, burst time.Duration) func(http.Handler) http.Handler {
+	limiter := rate.NewLimiter(rate.Limit(rps), int(rps))
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !limiter.Allow() {
+				core.Fail(w, r, core.BadRequest("too many requests", nil))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

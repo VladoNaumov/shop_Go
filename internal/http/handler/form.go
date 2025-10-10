@@ -6,14 +6,18 @@ import (
 	"net/http"
 	"strings"
 
+	"myApp/internal/core"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/csrf"
+	"github.com/microcosm-cc/bluemonday"
 )
 
 type PageData struct {
 	Title     string
 	CSRFField template.HTML
 	OK        bool
+	Nonce     string // Для CSP (OWASP A03).
 }
 
 type FormData struct {
@@ -28,52 +32,58 @@ type FormView struct {
 	Errors map[string]string
 }
 
-// [ADDED] Инициализация валидатора один раз на пакет
-var validate = validator.New()
-
-// ---------------------------------------
-
-func FormIndex(w http.ResponseWriter, r *http.Request) {
-	tpl := template.Must(template.ParseFiles(
+// Глобальные шаблоны и валидатор (OWASP A05).
+var (
+	tpl = template.Must(template.ParseFiles(
 		"web/templates/layouts/base.gohtml",
 		"web/templates/partials/nav.gohtml",
 		"web/templates/partials/footer.gohtml",
 		"web/templates/pages/form.gohtml",
 	))
+	validate  = validator.New()
+	sanitizer = bluemonday.UGCPolicy()
+)
+
+// FormIndex рендерит форму (GET).
+func FormIndex(w http.ResponseWriter, r *http.Request) {
+	nonce := r.Context().Value("nonce").(string) // Получаем nonce из middleware.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	ok := r.URL.Query().Get("ok") == "1"
-
 	data := FormView{
 		PageData: PageData{
 			Title:     "Форма",
 			CSRFField: csrf.TemplateField(r),
 			OK:        ok,
+			Nonce:     nonce,
 		},
 		Form:   FormData{},
 		Errors: map[string]string{},
 	}
-	_ = tpl.ExecuteTemplate(w, "base", data)
+	if err := tpl.ExecuteTemplate(w, "base", data); err != nil {
+		core.Fail(w, r, core.Internal("template error", err))
+	}
 }
 
+// FormSubmit обрабатывает отправку формы (POST).
 func FormSubmit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB (OWASP A05).
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	// Чтение и нормализация данных
 	f := FormData{
-		Name:    strings.TrimSpace(r.Form.Get("name")),
-		Email:   strings.TrimSpace(r.Form.Get("email")),
-		Message: strings.TrimSpace(r.Form.Get("message")),
+		Name:    sanitizer.Sanitize(strings.TrimSpace(r.Form.Get("name"))),
+		Email:   sanitizer.Sanitize(strings.TrimSpace(r.Form.Get("email"))),
+		Message: sanitizer.Sanitize(strings.TrimSpace(r.Form.Get("message"))),
 	}
 
-	// Валидация через validator/v10
 	errs := map[string]string{}
 	if err := validate.Struct(f); err != nil {
 		if verrs, ok := err.(validator.ValidationErrors); ok {
@@ -110,35 +120,30 @@ func FormSubmit(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+			core.LogError("Validation failed", map[string]interface{}{"errors": errs})
 		} else {
-			// Общий случай ошибки
 			errs["form"] = "Ошибка валидации"
+			core.LogError("Unexpected validation error", map[string]interface{}{"error": err.Error()})
 		}
 	}
 
-	// Если ошибки — ререндер формы с Bootstrap-классами и текстами ошибок
 	if len(errs) > 0 {
-		tpl := template.Must(template.ParseFiles(
-			"web/templates/layouts/base.gohtml",
-			"web/templates/partials/nav.gohtml",
-			"web/templates/partials/footer.gohtml",
-			"web/templates/pages/form.gohtml",
-		))
+		nonce := r.Context().Value("nonce").(string)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = tpl.ExecuteTemplate(w, "base", FormView{
+		data := FormView{
 			PageData: PageData{
 				Title:     "Форма",
 				CSRFField: csrf.TemplateField(r),
+				Nonce:     nonce,
 			},
 			Form:   f,
 			Errors: errs,
-		})
+		}
+		if err := tpl.ExecuteTemplate(w, "base", data); err != nil {
+			core.Fail(w, r, core.Internal("template error", err))
+		}
 		return
 	}
 
-	// [NOTE] Здесь можно отправить email/положить в очередь и т.п.
-	// [REMOVED] Любые записи в БД о факте отправки — по твоей просьбе НЕ выполняем.
-
-	// [ADDED] PRG: редирект на GET с флагом ok=1
 	http.Redirect(w, r, "/form?ok=1", http.StatusSeeOther)
 }

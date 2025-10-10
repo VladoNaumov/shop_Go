@@ -1,0 +1,2 @@
+2025/10/10 19:07:42 logfile.go:102: {"fields":null,"level":"ERROR","msg":"CSRF running without HTTPS in non-prod","time":"2025-10-10T16:07:42Z"}
+2025/10/10 19:19:47 logfile.go:102: {"fields":null,"level":"ERROR","msg":"CSRF running without HTTPS in non-prod","time":"2025-10-10T16:19:47Z"}
