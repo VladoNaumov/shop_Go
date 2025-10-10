@@ -1,51 +1,61 @@
 package core
 
-// response.go — стандартные функции для JSON-ответов и обработки ошибок API.
-
+// response.go
 import (
 	"encoding/json"
-	"log"
 	"net/http"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
-// JSON — стандартный JSON-ответ.
+// JSON отправляет JSON-ответ (OWASP A09).
 func JSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		LogError("JSON encoding failed", map[string]interface{}{"error": err.Error()})
+	}
 }
 
-// NoContent — отправляет HTTP 204 без тела.
+// NoContent отправляет HTTP 204.
 func NoContent(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ProblemDetail — структура в формате RFC7807 (ошибки API).
+// ProblemDetail — RFC7807 для ошибок API (OWASP A04).
 type ProblemDetail struct {
-	Type     string            `json:"type,omitempty"`
+	Type     string            `json:"type"`
 	Title    string            `json:"title"`
 	Status   int               `json:"status"`
-	Detail   string            `json:"detail,omitempty"`
-	Instance string            `json:"instance,omitempty"`
-	Code     string            `json:"code,omitempty"`
+	Detail   string            `json:"detail"`
+	Instance string            `json:"instance"`
+	Code     string            `json:"code"`
 	Fields   map[string]string `json:"fields,omitempty"`
 }
 
-// Fail — единая точка для обработки ошибок API.
-// Преобразует error → AppError → JSON-ответ с деталями.
+// Fail отправляет RFC7807-ответ (OWASP A04, A09).
 func Fail(w http.ResponseWriter, r *http.Request, err error) {
 	ae := From(err)
+	requestID := middleware.GetReqID(r.Context())
+	logFields := map[string]interface{}{
+		"request_id": requestID,
+		"path":       r.URL.Path,
+		"code":       ae.Code,
+		"status":     ae.Status,
+		"message":    ae.Message,
+		"fields":     ae.Fields,
+		"error":      ae.Err,
+	}
+	LogError("Request failed", logFields)
 
-	// Пишем ошибку в стандартный лог (в консоль)
-	log.Printf("ERROR: code=%s status=%d message=%s fields=%v err=%v",
-		ae.Code, ae.Status, ae.Message, ae.Fields, ae.Err)
-
-	// Отправляем JSON с деталями ошибки
-	JSON(w, ae.Status, ProblemDetail{
-		Title:  http.StatusText(ae.Status),
-		Status: ae.Status,
-		Detail: ae.Message,
-		Code:   ae.Code,
-		Fields: ae.Fields,
-	})
+	problem := ProblemDetail{
+		Type:     "/errors/" + ae.Code,
+		Title:    http.StatusText(ae.Status),
+		Status:   ae.Status,
+		Detail:   ae.Message,
+		Instance: r.URL.Path,
+		Code:     ae.Code,
+		Fields:   ae.Fields,
+	}
+	JSON(w, ae.Status, problem)
 }

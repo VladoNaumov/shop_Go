@@ -1,26 +1,36 @@
 package handler
 
 import (
-	"encoding/json"
 	"html/template"
 	"net/http"
+
+	"github.com/gorilla/csrf"
+	"myApp/internal/core"
 )
 
-// Health — простой healthcheck без зависимости от core.
+// Глобальные шаблоны для 404 (OWASP A05).
+var notFoundTpl = template.Must(template.ParseFiles(
+	"web/templates/layouts/base.gohtml",
+	"web/templates/partials/nav.gohtml",
+	"web/templates/partials/footer.gohtml",
+	"web/templates/pages/404.gohtml",
+))
+
+// Health — healthcheck с core.JSON (OWASP A09).
 func Health(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	core.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// NotFound — страница 404.
+// NotFound — 404 с шаблоном.
 func NotFound(w http.ResponseWriter, r *http.Request) {
-	tpl := template.Must(template.ParseFiles(
-		"web/templates/layouts/base.gohtml",
-		"web/templates/partials/nav.gohtml",
-		"web/templates/partials/footer.gohtml",
-		"web/templates/pages/404.gohtml",
-	))
+	nonce := r.Context().Value("nonce").(string)
 	w.WriteHeader(http.StatusNotFound)
-	_ = tpl.ExecuteTemplate(w, "base", struct{ Title string }{"Страница не найдена"})
+	data := PageData{
+		Title:     "Страница не найдена",
+		CSRFField: csrf.TemplateField(r),
+		Nonce:     nonce,
+	}
+	if err := notFoundTpl.ExecuteTemplate(w, "base", data); err != nil {
+		core.Fail(w, r, core.Internal("template error", err))
+	}
 }

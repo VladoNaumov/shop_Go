@@ -1,6 +1,6 @@
 package core
 
-//errors.go
+// errors.go
 import (
 	"errors"
 	"fmt"
@@ -9,11 +9,11 @@ import (
 
 // AppError — единый контейнер для ошибок приложения.
 type AppError struct {
-	Code    string            // машинный код ("validation", "not_found", "internal" и т.п.)
+	Code    string            // Машинный код ("validation", "not_found", etc.)
 	Status  int               // HTTP-статус
-	Message string            // безопасное для клиента сообщение
-	Err     error             // первопричина (не уходит клиенту)
-	Fields  map[string]string // поле -> текст ошибки (для валидации форм/API)
+	Message string            // Сообщение для клиента
+	Err     error             // Внутренняя ошибка
+	Fields  map[string]string // Поле -> текст ошибки
 }
 
 func (e *AppError) Error() string {
@@ -22,27 +22,34 @@ func (e *AppError) Error() string {
 	}
 	return fmt.Sprintf("%s (%d): %s", e.Code, e.Status, e.Message)
 }
+
 func (e *AppError) Unwrap() error { return e.Err }
 
-// Фабрики
-
+// Фабрики ошибок (OWASP A05).
 func BadRequest(msg string, fields map[string]string) *AppError {
+	if len(fields) > 10 {
+		fields = map[string]string{"form": "Too many validation errors"}
+	}
 	return &AppError{Code: "bad_request", Status: http.StatusBadRequest, Message: msg, Fields: fields}
 }
+
 func NotFound(msg string) *AppError {
 	return &AppError{Code: "not_found", Status: http.StatusNotFound, Message: msg}
 }
+
 func Forbidden(msg string) *AppError {
 	return &AppError{Code: "forbidden", Status: http.StatusForbidden, Message: msg}
 }
+
 func Unauthorized(msg string) *AppError {
 	return &AppError{Code: "unauthorized", Status: http.StatusUnauthorized, Message: msg}
 }
+
 func Internal(msg string, err error) *AppError {
 	return &AppError{Code: "internal", Status: http.StatusInternalServerError, Message: msg, Err: err}
 }
 
-// From — приводит произвольную ошибку к *AppError* (по умолчанию Internal 500).
+// From приводит ошибку к AppError (OWASP A09).
 func From(err error) *AppError {
 	var ae *AppError
 	if errors.As(err, &ae) {

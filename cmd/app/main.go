@@ -1,5 +1,6 @@
 package main
 
+//main.go
 import (
 	"context"
 	"crypto/sha256"
@@ -16,56 +17,68 @@ import (
 )
 
 func main() {
-	// 1) Конфиг
 	cfg := core.Load()
-
-	// 2) Логи по дате + ежедневная ротация + автоочистка (7 дней)
 	core.InitDailyLog()
+	defer core.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		for {
-			next := time.Now().Add(24 * time.Hour).Truncate(24 * time.Hour)
-			time.Sleep(time.Until(next))
-			core.InitDailyLog()
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				next := time.Now().Add(24 * time.Hour).Truncate(24 * time.Hour)
+				time.Sleep(time.Until(next))
+				core.InitDailyLog()
+			}
 		}
 	}()
 
-	// 3) Санити-проверки для prod
 	if cfg.Env == "prod" {
-		if cfg.CSRFKey == "" {
-			log.Println("ERROR: missing CSRF_KEY in prod")
+		if len(cfg.CSRFKey) < 32 {
+			core.LogError("Invalid CSRF_KEY in production", map[string]interface{}{"length": len(cfg.CSRFKey)})
 			os.Exit(1)
 		}
-		if !cfg.Secure {
-			log.Println("WARN: APP_ENV=prod but Secure=false; HTTPS/HSTS disabled")
+		if cfg.Secure && (cfg.CertFile == "" || cfg.KeyFile == "") {
+			core.LogError("Missing TLS_CERT_FILE or TLS_KEY_FILE in production", nil)
+			os.Exit(1)
+		}
+		if cfg.Addr == "" {
+			core.LogError("Invalid HTTP_ADDR in production", nil)
+			os.Exit(1)
 		}
 	}
 
-	// 4) Собираем http.Handler (router + middleware + CSRF + статика + 404)
 	handler := app.New(cfg, derive32(cfg.CSRFKey))
+	srv, err := app.Server(cfg, handler)
+	if err != nil {
+		core.LogError("Failed to create server", map[string]interface{}{"error": err.Error()})
+		os.Exit(1)
+	}
 
-	// 5) Создаём http.Server с безопасными таймаутами
-	srv := app.Server(cfg.Addr, handler)
-
-	// 6) Graceful shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	sigs, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
 		log.Printf("INFO: http: listening addr=%s env=%s app=%s", cfg.Addr, cfg.Env, cfg.AppName)
-		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("ERROR: http: server error: %v", err)
+		var err error
+		if cfg.Secure {
+			err = srv.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if !errors.Is(err, http.ErrServerClosed) {
+			core.LogError("Server error", map[string]interface{}{"error": err.Error()})
 			os.Exit(1)
 		}
 	}()
 
-	<-ctx.Done()
+	<-sigs.Done()
 	log.Println("INFO: http: shutdown started")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("ERROR: http: shutdown error: %v", err)
+	if err := app.Shutdown(srv, cfg.ShutdownTimeout); err != nil {
+		core.LogError("Shutdown error", map[string]interface{}{"error": err.Error()})
 	} else {
 		log.Println("INFO: http: shutdown complete")
 	}
