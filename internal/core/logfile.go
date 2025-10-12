@@ -1,8 +1,7 @@
-// internal/core/logfile.go
 package core
 
+// logfile.go
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -21,41 +20,6 @@ type Logger struct {
 }
 
 var globalLogger *Logger
-
-// levelWriter — пишет запись ровно в один файл по уровню.
-type levelWriter struct {
-	lg *Logger
-}
-
-func (w *levelWriter) Write(p []byte) (n int, err error) {
-	// Пытаемся извлечь уровень из JSON (если есть).
-	var tmp struct {
-		Level string `json:"level"`
-	}
-	level := ""
-	if err := json.Unmarshal(bytes.TrimSpace(p), &tmp); err == nil && tmp.Level != "" {
-		level = strings.ToUpper(tmp.Level)
-	} else {
-		s := strings.ToUpper(string(p))
-		if strings.Contains(s, `"LEVEL":"ERROR"`) || strings.Contains(s, " ERROR ") {
-			level = "ERROR"
-		}
-	}
-
-	globalLogger.mu.Lock()
-	defer globalLogger.mu.Unlock()
-
-	if level == "ERROR" && globalLogger.errorFile != nil {
-		return globalLogger.errorFile.Write(p)
-	}
-
-	if globalLogger.mainFile != nil {
-		return globalLogger.mainFile.Write(p)
-	}
-
-	// fallback — только stdout
-	return len(p), nil
-}
 
 // InitDailyLog инициализирует лог-файлы с ротацией (OWASP A09).
 func InitDailyLog() {
@@ -77,7 +41,7 @@ func InitDailyLog() {
 	errorFile, err := os.OpenFile(errPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Printf("Failed to open error log file: %v", err)
-		_ = mainFile.Close()
+		mainFile.Close()
 		return
 	}
 
@@ -86,8 +50,7 @@ func InitDailyLog() {
 		errorFile: errorFile,
 	}
 
-	// Консоль + маршрутизатор по уровню.
-	logWriter := io.MultiWriter(os.Stdout, &levelWriter{lg: globalLogger})
+	logWriter := io.MultiWriter(mainFile, os.Stdout, newErrorSplitter(errorFile))
 	log.SetOutput(logWriter)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Println("=== New log file initialized ===")
@@ -95,39 +58,48 @@ func InitDailyLog() {
 	go cleanupOldLogs("logs", 7)
 }
 
-// ---------- Публичные функции ----------
+// newErrorSplitter пишет строки с "ERROR" в errorFile (OWASP A09).
+func newErrorSplitter(errorFile *os.File) io.Writer {
+	return writerFunc(func(p []byte) (n int, err error) {
+		line := string(p)
+		if strings.Contains(line, "ERROR") {
+			globalLogger.mu.Lock()
+			defer globalLogger.mu.Unlock()
+			_, err = errorFile.Write(p)
+			if err != nil {
+				log.Printf("Failed to write to error log: %v", err)
+			}
+		}
+		return os.Stdout.Write(p)
+	})
+}
+
+type writerFunc func(p []byte) (n int, err error)
+
+func (f writerFunc) Write(p []byte) (n int, err error) {
+	return f(p)
+}
 
 // LogError записывает ошибку в JSON (OWASP A09).
 func LogError(msg string, fields map[string]interface{}) {
-	logWithLevel("ERROR", msg, fields)
-}
-
-// LogInfo — обычная информационная запись.
-func LogInfo(msg string, fields map[string]interface{}) {
-	logWithLevel("INFO", msg, fields)
-}
-
-// Общая функция записи.
-func logWithLevel(level, msg string, fields map[string]interface{}) {
 	if globalLogger == nil {
-		log.Printf("%s: %s, fields: %v", strings.ToUpper(level), msg, fields)
+		log.Printf("ERROR: Logger not initialized: %s, fields: %v", msg, fields)
 		return
 	}
 
-	entry := map[string]interface{}{
-		"level":  strings.ToUpper(level),
+	logEntry := map[string]interface{}{
+		"level":  "ERROR",
 		"msg":    msg,
 		"time":   time.Now().UTC().Format(time.RFC3339),
 		"fields": fields,
 	}
-
-	data, err := json.Marshal(entry)
+	logData, err := json.Marshal(logEntry)
 	if err != nil {
 		log.Printf("ERROR: Failed to marshal log entry: %v", err)
 		return
 	}
 
-	log.Println(string(data))
+	log.Println(string(logData))
 }
 
 // cleanupOldLogs удаляет старые логи (OWASP A09).
@@ -162,11 +134,7 @@ func Close() {
 	if globalLogger != nil {
 		globalLogger.mu.Lock()
 		defer globalLogger.mu.Unlock()
-		if globalLogger.mainFile != nil {
-			_ = globalLogger.mainFile.Close()
-		}
-		if globalLogger.errorFile != nil {
-			_ = globalLogger.errorFile.Close()
-		}
+		globalLogger.mainFile.Close()
+		globalLogger.errorFile.Close()
 	}
 }

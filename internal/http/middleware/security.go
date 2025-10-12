@@ -1,6 +1,5 @@
 package middleware
 
-// security.go
 import (
 	"net/http"
 )
