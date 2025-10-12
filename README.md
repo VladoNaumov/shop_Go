@@ -167,6 +167,7 @@ myApp/
 
 ---
 
+
 TEST command: golangci-lint run
 
 | Команда                                         | Что делает                                   |
