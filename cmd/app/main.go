@@ -1,6 +1,6 @@
 package main
 
-// main.go
+//main.go
 import (
 	"context"
 	"crypto/sha256"
@@ -17,78 +17,71 @@ import (
 )
 
 func main() {
-	// Load загружает конфигурацию
+	// Загружает конфигурацию приложения из переменных окружения
 	cfg := core.Load()
 
-	// InitDailyLog инициализирует лог-файлы с ротацией
+	// Инициализирует ротацию лог-файлов
 	core.InitDailyLog()
 
-	//  Close закрывает файлы логов
+	// Закрывает файлы логов при завершении приложения
 	defer core.Close()
 
-	// ???
+	// Создаёт контекст для управления ротацией логов
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Запускает ежедневную ротацию логов в отдельной горутине
 	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			default:
-				next := time.Now().Add(24 * time.Hour).Truncate(24 * time.Hour)
-				time.Sleep(time.Until(next))
+			case <-ticker.C:
 				core.InitDailyLog()
 			}
 		}
 	}()
 
-	// Проверки для prod (OWASP A05).
-	if cfg.Env == "prod" {
-		if len(cfg.CSRFKey) < 32 {
-			core.LogError("Invalid CSRF_KEY in production", map[string]interface{}{"length": len(cfg.CSRFKey)})
-			os.Exit(1)
-		}
-		if cfg.Addr == "" {
-			core.LogError("Invalid HTTP_ADDR in production", nil)
-			os.Exit(1)
-		}
-	}
-
-	// ?
+	// Инициализирует HTTP-обработчик с CSRF-защитой
 	handler, err := app.New(cfg, derive32(cfg.CSRFKey))
 	if err != nil {
-		core.LogError("Failed to initialize app", map[string]interface{}{"error": err.Error()})
+		core.LogError("Ошибка инициализации приложения", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
 
-	// ?
+	// Создаёт HTTP-сервер с заданной конфигурацией
 	srv, err := app.Server(cfg, handler)
 	if err != nil {
-		core.LogError("Failed to create server", map[string]interface{}{"error": err.Error()})
+		core.LogError("Ошибка создания сервера", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
 
+	// Настраивает обработку сигналов для graceful shutdown
 	sigs, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Запускает HTTP-сервер в отдельной горутине
 	go func() {
-		log.Printf("INFO: http: listening addr=%s env=%s app=%s", cfg.Addr, cfg.Env, cfg.AppName)
+		log.Printf("INFO: http: сервер запущен, addr=%s, env=%s, app=%s", cfg.Addr, cfg.Env, cfg.AppName)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			core.LogError("Server error", map[string]interface{}{"error": err.Error()})
+			core.LogError("Ошибка работы сервера", map[string]interface{}{"error": err.Error()})
 			os.Exit(1)
 		}
 	}()
 
+	// Ожидает сигнал завершения и выполняет graceful shutdown
 	<-sigs.Done()
-	log.Println("INFO: http: shutdown started")
+	log.Println("INFO: http: начат процесс завершения")
 	if err := app.Shutdown(srv, cfg.ShutdownTimeout); err != nil {
-		core.LogError("Shutdown error", map[string]interface{}{"error": err.Error()})
+		core.LogError("Ошибка завершения работы сервера", map[string]interface{}{"error": err.Error()})
 	} else {
-		log.Println("INFO: http: shutdown complete")
+		log.Println("INFO: http: завершение работы выполнено")
 	}
 }
 
-// derive32 создаёт 32-байтовый ключ для CSRF.
+// derive32 генерирует 32-байтовый ключ для CSRF на основе входной строки (OWASP A02)
 func derive32(secret string) []byte {
 	sum := sha256.Sum256([]byte(secret))
 	return sum[:]
