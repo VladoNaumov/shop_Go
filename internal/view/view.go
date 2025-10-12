@@ -4,12 +4,10 @@ import (
 	"html/template"
 	"net/http"
 
-	"github.com/gorilla/csrf"
 	"myApp/internal/core"
-)
 
-// nonceKey — приватный ключ для context (OWASP A05).
-type nonceKey struct{}
+	"github.com/gorilla/csrf"
+)
 
 // Templates — структура для хранения шаблонов.
 type Templates struct {
@@ -50,7 +48,7 @@ func New() (*Templates, error) {
 	return t, nil
 }
 
-// Render рендерит шаблон с данными (OWASP A03, A09).
+// Render рендерит шаблон с данными (OWASP).
 func (t *Templates) Render(w http.ResponseWriter, r *http.Request, templateName string, title string, data interface{}) {
 	tpl, ok := t.templates[templateName]
 	if !ok {
@@ -58,20 +56,19 @@ func (t *Templates) Render(w http.ResponseWriter, r *http.Request, templateName 
 		return
 	}
 
-	nonce, ok := r.Context().Value(nonceKey{}).(string)
-	if !ok {
+	nonce, _ := r.Context().Value(core.CtxNonce).(string)
+	if nonce == "" {
 		core.Fail(w, r, core.Internal("nonce not found in context", nil))
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err := tpl.ExecuteTemplate(w, "base", PageData{
+	if err := tpl.ExecuteTemplate(w, "base", PageData{
 		Title:     title,
 		CSRFField: csrf.TemplateField(r),
 		Nonce:     nonce,
 		Data:      data,
-	})
-	if err != nil {
+	}); err != nil {
 		core.LogError("Template rendering failed", map[string]interface{}{
 			"template": templateName,
 			"error":    err.Error(),

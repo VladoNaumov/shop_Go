@@ -167,7 +167,6 @@ myApp/
 
 ---
 
-
 TEST command: golangci-lint run
 
 | Команда                                         | Что делает                                   |
@@ -191,12 +190,6 @@ TEST command: golangci-lint run
 🧩 **Проект минималистичный, безопасный, продакшен-готовый за NGINX. Готов к API, БД, аутентификации.**
 
 ```
-
-TODO: 
-PS C:\OSPanel\home\GolandProjects\myApp> .\make lint
-Running golangci-lint...
-internal\app\app.go:41:42: SA1029: should not use built-in type string as key for value; define your own type to avoid collisions (staticcheck)
-ctx := context.WithValue(r.Context(), "nonce", nonce)
 
 
 ### 🚀 **Что осталось сделать (финальные задачи)**
