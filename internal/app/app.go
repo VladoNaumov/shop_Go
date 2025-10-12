@@ -17,6 +17,9 @@ import (
 	"github.com/gorilla/csrf"
 )
 
+// nonceKey — приватный ключ для context (OWASP A05).
+type nonceKey struct{}
+
 // New собирает приложение (OWASP A05).
 func New(cfg core.Config, csrfKey []byte) (http.Handler, error) {
 	// Инициализация шаблонов.
@@ -34,10 +37,10 @@ func New(cfg core.Config, csrfKey []byte) (http.Handler, error) {
 		nonce = ""
 	}
 
-	// Передача nonce.
+	// Передача nonce в context.
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), "nonce", nonce)
+			ctx := context.WithValue(r.Context(), nonceKey{}, nonce)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
