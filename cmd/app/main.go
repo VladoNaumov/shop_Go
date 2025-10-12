@@ -1,5 +1,6 @@
 package main
 
+// main.go
 import (
 	"context"
 	"crypto/sha256"
@@ -16,10 +17,16 @@ import (
 )
 
 func main() {
+	// Load загружает конфигурацию
 	cfg := core.Load()
+
+	// InitDailyLog инициализирует лог-файлы с ротацией
 	core.InitDailyLog()
+
+	//  Close закрывает файлы логов
 	defer core.Close()
 
+	// ???
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
@@ -47,12 +54,14 @@ func main() {
 		}
 	}
 
+	// ?
 	handler, err := app.New(cfg, derive32(cfg.CSRFKey))
 	if err != nil {
 		core.LogError("Failed to initialize app", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
 
+	// ?
 	srv, err := app.Server(cfg, handler)
 	if err != nil {
 		core.LogError("Failed to create server", map[string]interface{}{"error": err.Error()})
@@ -79,7 +88,7 @@ func main() {
 	}
 }
 
-// derive32 создаёт 32-байтовый ключ для CSRF (OWASP A07).
+// derive32 создаёт 32-байтовый ключ для CSRF.
 func derive32(secret string) []byte {
 	sum := sha256.Sum256([]byte(secret))
 	return sum[:]

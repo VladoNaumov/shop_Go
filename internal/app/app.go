@@ -17,7 +17,7 @@ import (
 	"github.com/gorilla/csrf"
 )
 
-// собирает приложение (OWASP A05).
+// собирает приложение.
 func New(cfg core.Config, csrfKey []byte) (http.Handler, error) {
 	tpl, err := view.New()
 	if err != nil {
@@ -79,7 +79,7 @@ func New(cfg core.Config, csrfKey []byte) (http.Handler, error) {
 	return r, nil
 }
 
-// generateNonce создаёт nonce для CSP (OWASP).
+// generateNonce (miksi nimi nonce?) создаёт nonce для CSP (OWASP).
 func generateNonce() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
