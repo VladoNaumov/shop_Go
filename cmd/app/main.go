@@ -1,16 +1,14 @@
 package main
 
+//main.go
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -20,7 +18,9 @@ import (
 
 func main() {
 	// 1️⃣ Загружаем конфигурацию приложения и инициализируем логирование
-	cfg := initConfig()
+	cfg := core.Load()
+	log.Printf("INFO: Secure=%v, Env=%s", cfg.Secure, cfg.Env) // Отладка значений Secure и Env
+	core.InitDailyLog()
 
 	// 2️⃣ Закрываем файлы логов при завершении приложения
 	defer core.Close()
@@ -47,84 +47,6 @@ func main() {
 
 	// 9️⃣ Ожидаем сигнал и выполняем корректное выключение
 	waitShutdown(sigs, srv, cfg)
-}
-
-// initConfig загружает конфигурацию приложения и подготавливает систему логов (OWASP A05)
-func initConfig() core.Config {
-	cfg := core.Config{
-		AppName:           getEnv("APP_NAME", "myApp"),
-		Addr:              getEnv("HTTP_ADDR", ":8080"),
-		Env:               getEnv("APP_ENV", "dev"),
-		CSRFKey:           getEnv("CSRF_KEY", generateRandomKey()),
-		Secure:            getEnv("SECURE", "") == "true",
-		CertFile:          getEnv("TLS_CERT_FILE", ""),
-		KeyFile:           getEnv("TLS_KEY_FILE", ""),
-		ShutdownTimeout:   getEnvDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
-		ReadHeaderTimeout: getEnvDuration("READ_HEADER_TIMEOUT", 5*time.Second),
-		ReadTimeout:       getEnvDuration("READ_TIMEOUT", 10*time.Second),
-		WriteTimeout:      getEnvDuration("WRITE_TIMEOUT", 30*time.Second),
-		IdleTimeout:       getEnvDuration("IDLE_TIMEOUT", 60*time.Second),
-		RequestTimeout:    getEnvDuration("REQUEST_TIMEOUT", 15*time.Second),
-	}
-
-	// Логируем значения Secure и Env для отладки
-	log.Printf("INFO: Secure=%v, Env=%s", cfg.Secure, cfg.Env)
-
-	// Проверяем конфигурацию для продакшен-среды
-	if cfg.Env == "prod" {
-		if len(cfg.CSRFKey) < 32 {
-			core.LogError("Недостаточная длина CSRF_KEY в продакшене", map[string]interface{}{"length": len(cfg.CSRFKey)})
-			os.Exit(1)
-		}
-		if cfg.Secure && (cfg.CertFile == "" || cfg.KeyFile == "") {
-			core.LogError("Отсутствует TLS_CERT_FILE или TLS_KEY_FILE в продакшене", nil)
-			os.Exit(1)
-		}
-		if cfg.Addr == "" {
-			core.LogError("Отсутствует HTTP_ADDR в продакшене", nil)
-			os.Exit(1)
-		}
-		if !cfg.Secure {
-			core.LogError("SECURE должен быть true в продакшене для использования HTTPS", nil)
-			os.Exit(1)
-		}
-	}
-
-	core.InitDailyLog()
-	return cfg
-}
-
-// getEnv возвращает значение переменной окружения или значение по умолчанию
-func getEnv(key, def string) string {
-	val := strings.TrimSpace(os.Getenv(key))
-	if val == "" {
-		return def
-	}
-	return val
-}
-
-// getEnvDuration возвращает значение длительности из переменной окружения или значение по умолчанию
-func getEnvDuration(key string, def time.Duration) time.Duration {
-	val := strings.TrimSpace(os.Getenv(key))
-	if val == "" {
-		return def
-	}
-	d, err := time.ParseDuration(val)
-	if err != nil {
-		core.LogError("Неверный формат длительности", map[string]interface{}{"key": key, "value": val, "error": err.Error()})
-		return def
-	}
-	return d
-}
-
-// generateRandomKey создаёт случайный 32-байтовый ключ для CSRF в формате base64
-func generateRandomKey() string {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		core.LogError("Ошибка генерации CSRF-ключа", map[string]interface{}{"error": err.Error()})
-		return "fallback-key-please-change"
-	}
-	return base64.StdEncoding.EncodeToString(b)
 }
 
 // startLogRotation запускает процесс ротации логов раз в сутки (24h)

@@ -1,7 +1,6 @@
 package core
 
 //config.go
-
 import (
 	"crypto/rand"
 	"encoding/base64"
@@ -57,6 +56,10 @@ func Load() Config {
 		}
 		if cfg.Addr == "" {
 			LogError("Отсутствует HTTP_ADDR в продакшене", nil)
+			os.Exit(1)
+		}
+		if !cfg.Secure {
+			LogError("SECURE должен быть true в продакшене для использования HTTPS", nil)
 			os.Exit(1)
 		}
 	}
