@@ -1,16 +1,15 @@
 package app
 
-//app.go
-
 import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"net/http"
+
 	"myApp/internal/core"
 	"myApp/internal/http/handler"
 	mw "myApp/internal/http/middleware"
 	"myApp/internal/view"
-	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -65,7 +64,8 @@ func New(cfg core.Config, csrfKey []byte) (http.Handler, error) {
 		csrf.HttpOnly(true),
 		csrf.Path("/"),
 	))
-	if !cfg.Secure {
+	// Логирует предупреждение, если CSRF используется без HTTPS в не-продакшен среде
+	if !cfg.Secure && cfg.Env != "prod" {
 		core.LogError("CSRF работает без HTTPS в не-продакшен среде", nil)
 	}
 
