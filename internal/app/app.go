@@ -1,6 +1,5 @@
 package app
 
-//app.go
 import (
 	"context"
 	"crypto/rand"
@@ -17,18 +16,68 @@ import (
 	"github.com/gorilla/csrf"
 )
 
-// New инициализирует HTTP-роутер с middleware и маршрутами приложения
+// New — собирает HTTP-роутер из модулей (middleware, маршруты, шаблоны и т.д.)
 func New(cfg core.Config, csrfKey []byte) (http.Handler, error) {
-	// Инициализирует шаблонизатор для рендеринга HTML
-	tpl, err := view.New()
+	tpl, err := initTemplates()
 	if err != nil {
 		return nil, err
 	}
 
 	r := chi.NewRouter()
+	useBaseMiddleware(r, cfg)
+	useSecurityMiddleware(r, cfg)
+	useCSRF(r, cfg, csrfKey)
+	serveStatic(r)
+	registerRoutes(r, tpl)
 
-	// Добавляет nonce в контекст каждого запроса для Content Security Policy
-	r.Use(func(next http.Handler) http.Handler {
+	return r, nil
+}
+
+/* ---------- Инициализация ---------- */
+
+// initTemplates — создаёт экземпляр шаблонизатора
+func initTemplates() (*view.Templates, error) {
+	return view.New()
+}
+
+/* ---------- Middleware ---------- */
+
+// useBaseMiddleware — подключает базовые middleware (лог, ID, таймауты, nonce и т.д.)
+func useBaseMiddleware(r *chi.Mux, cfg core.Config) {
+	r.Use(withNonce()) // добавляет nonce для CSP
+	r.Use(mw.TrustedProxy([]string{"127.0.0.1", "::1"}))
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(cfg.RequestTimeout))
+}
+
+// useSecurityMiddleware — подключает CSP, X-Frame-Options, HSTS (при HTTPS)
+func useSecurityMiddleware(r *chi.Mux, cfg core.Config) {
+	r.Use(mw.SecureHeaders())
+	if cfg.Secure {
+		r.Use(mw.HSTS(cfg.Env == "prod"))
+	}
+}
+
+// useCSRF — включает CSRF-защиту для форм
+func useCSRF(r *chi.Mux, cfg core.Config, csrfKey []byte) {
+	r.Use(csrf.Protect(
+		csrfKey,
+		csrf.Secure(cfg.Secure),
+		csrf.SameSite(csrf.SameSiteLaxMode),
+		csrf.HttpOnly(true),
+		csrf.Path("/"),
+	))
+	if !cfg.Secure && cfg.Env != "prod" {
+		core.LogError("CSRF работает без HTTPS в не-продакшен среде", nil)
+	}
+}
+
+// withNonce — создаёт middleware, добавляющее случайный nonce в контекст запроса
+func withNonce() func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			nonce, err := generateNonce()
 			if err != nil {
@@ -39,52 +88,30 @@ func New(cfg core.Config, csrfKey []byte) (http.Handler, error) {
 			ctx := context.WithValue(r.Context(), core.CtxNonce, nonce)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
-	})
-
-	// Применяет middleware для обработки запросов
-	r.Use(mw.TrustedProxy([]string{"127.0.0.1", "::1"})) // Ограничивает доверенные прокси
-	r.Use(middleware.RequestID)                          // Добавляет уникальный ID запроса
-	r.Use(middleware.RealIP)                             // Определяет реальный IP клиента
-	r.Use(middleware.Logger)                             // Логирует запросы
-	r.Use(middleware.Recoverer)                          // Восстанавливает после паники
-	r.Use(middleware.Timeout(cfg.RequestTimeout))        // Ограничивает время выполнения запроса
-
-	// Добавляет заголовки безопасности (CSP, X-Frame-Options и др.)
-	r.Use(mw.SecureHeaders())
-
-	// Включает HSTS для продакшен-среды, если HTTPS включён
-	if cfg.Secure {
-		r.Use(mw.HSTS(cfg.Env == "prod"))
 	}
+}
 
-	// Настраивает CSRF-защиту для форм
-	r.Use(csrf.Protect(
-		csrfKey,
-		csrf.Secure(cfg.Secure),
-		csrf.SameSite(csrf.SameSiteLaxMode),
-		csrf.HttpOnly(true),
-		csrf.Path("/"),
-	))
-	// Логирует предупреждение, если CSRF используется без HTTPS в не-продакшен среде
-	if !cfg.Secure && cfg.Env != "prod" {
-		core.LogError("CSRF работает без HTTPS в не-продакшен среде", nil)
-	}
+/* ---------- Статика и маршруты ---------- */
 
-	// Обслуживает статические файлы из директории web/assets
-	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir("web/assets"))))
+// serveStatic — обслуживает файлы из каталога web/assets
+func serveStatic(r *chi.Mux) {
+	fs := http.StripPrefix("/assets/", http.FileServer(http.Dir("web/assets")))
+	r.Handle("/assets/*", fs)
+}
 
-	// Регистрирует маршруты приложения
+// registerRoutes — регистрирует маршруты приложения
+func registerRoutes(r *chi.Mux, tpl *view.Templates) {
 	r.Get("/", handler.Home(tpl))
 	r.Get("/about", handler.About(tpl))
 	r.Get("/form", handler.FormIndex(tpl))
 	r.Post("/form", handler.FormSubmit(tpl))
 	r.Get("/healthz", handler.Health)
 	r.NotFound(handler.NotFound(tpl))
-
-	return r, nil
 }
 
-// generateNonce создаёт случайный nonce для Content Security Policy (OWASP A05)
+/* ---------- Утилиты ---------- */
+
+// generateNonce — генерирует случайный nonce для CSP
 func generateNonce() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
