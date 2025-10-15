@@ -3,12 +3,12 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// Добавить поле CategoryID
 type Product struct {
 	ID         string    `db:"id" json:"id"`
 	CategoryID *string   `db:"category_id" json:"category_id,omitempty"`
@@ -28,7 +28,7 @@ func ListAllProducts(ctx context.Context, db *sqlx.DB) ([]Product, error) {
 
 	var items []Product
 	if err := db.SelectContext(ctx, &items, q); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list all products: %w", err)
 	}
 	return items, nil
 }
