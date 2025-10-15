@@ -3,109 +3,85 @@ package data
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"strings"
 
 	"myApp/internal/core"
 
 	"github.com/jmoiron/sqlx"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
-// Migrations управляет версиями БД
+const (
+	EnableMigrations = true                        // true → выполнять миграцию
+	MigrationFile    = "migrations/001_schema.sql" // путь к файлу миграции
+)
+
 type Migrations struct {
 	db *sqlx.DB
 }
 
-// NewMigrations создаёт мигратор
 func NewMigrations(db *sqlx.DB) *Migrations {
 	return &Migrations{db: db}
 }
 
-// RunMigrations выполняет все миграции
 func (m *Migrations) RunMigrations() error {
-	// Создаёт таблицу миграций, если не существует
-	if err := m.createMigrationsTable(); err != nil {
-		return err
-	}
-
-	// Находит все SQL файлы миграций
-	files, err := filepath.Glob("migrations/*.sql")
-	if err != nil {
-		return fmt.Errorf("ошибка поиска миграций: %w", err)
-	}
-
-	// Сортирует по номеру (001, 002...)
-	files.SortByName()
-
-	for _, file := range files {
-		if err := m.runMigration(file); err != nil {
-			return fmt.Errorf("ошибка миграции %s: %w", file, err)
-		}
-	}
-
-	core.LogInfo("Миграции завершены успешно", map[string]interface{}{
-		"files": len(files),
-	})
-	return nil
-}
-
-// createMigrationsTable создаёт таблицу для отслеживания миграций
-func (m *Migrations) createMigrationsTable() error {
-	const q = `
-		CREATE TABLE IF NOT EXISTS migrations (
-			id INT AUTO_INCREMENT PRIMARY KEY,
-			name VARCHAR(255) NOT NULL UNIQUE,
-			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`
-
-	_, err := m.db.Exec(q)
-	return err
-}
-
-// runMigration выполняет одну миграцию
-func (m *Migrations) runMigration(file string) error {
-	name := filepath.Base(file)
-
-	// Проверяет, применена ли уже миграция
-	var exists bool
-	err := m.db.Get(&exists, "SELECT COUNT(*) FROM migrations WHERE name = ?", name)
-	if err != nil {
-		return fmt.Errorf("ошибка проверки миграции: %w", err)
-	}
-
-	if exists {
-		core.LogInfo("Миграция уже применена", map[string]interface{}{"file": name})
+	if !EnableMigrations {
+		core.LogInfo("Миграции отключены (EnableMigrations=false)", nil)
+		fmt.Println("ℹ️ Миграции отключены")
 		return nil
 	}
 
-	// Читает SQL файл
-	sqlBytes, err := os.ReadFile(file)
-	if err != nil {
-		return fmt.Errorf("ошибка чтения файла: %w", err)
-	}
+	core.LogInfo("Начало выполнения миграции", map[string]interface{}{
+		"file": MigrationFile,
+	})
 
-	// Выполняет SQL (поддерживает multi-statements)
-	tx, err := m.db.BeginTxx(m.db.Context(), nil)
+	content, err := os.ReadFile(MigrationFile)
 	if err != nil {
+		core.LogError("Ошибка чтения файла миграции", map[string]interface{}{
+			"file":  MigrationFile,
+			"error": err.Error(),
+		})
+		fmt.Println("❌ Ошибка применения миграции")
 		return err
 	}
-	defer tx.Rollback()
 
-	if _, err := tx.Exec(string(sqlBytes)); err != nil {
-		return fmt.Errorf("ошибка выполнения SQL: %w", err)
+	sqlText := cleanSQL(string(content))
+	stmts := strings.Split(sqlText, ";")
+
+	executed := 0
+	for _, raw := range stmts {
+		stmt := strings.TrimSpace(raw)
+		if stmt == "" {
+			continue
+		}
+		if _, err := m.db.Exec(stmt); err != nil {
+			core.LogError("Ошибка SQL", map[string]interface{}{
+				"sql":   stmt,
+				"error": err.Error(),
+			})
+			fmt.Println("❌ Ошибка применения миграции")
+			return fmt.Errorf("ошибка выполнения SQL: %w", err)
+		}
+		executed++
 	}
 
-	// Записывает в таблицу миграций
-	_, err = tx.Exec("INSERT INTO migrations (name) VALUES (?)", name)
-	if err != nil {
-		return fmt.Errorf("ошибка записи миграции: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("ошибка коммита: %w", err)
-	}
-
-	core.LogInfo("Миграция применена", map[string]interface{}{"file": name})
+	core.LogInfo("Миграция успешно применена", map[string]interface{}{
+		"file":       MigrationFile,
+		"statements": executed,
+	})
+	fmt.Println("✅ Миграция применена")
 	return nil
+}
+
+// cleanSQL — убирает комментарии и пустые строки
+func cleanSQL(sql string) string {
+	lines := strings.Split(sql, "\n")
+	var clean []string
+	for _, ln := range lines {
+		t := strings.TrimSpace(ln)
+		if t == "" || strings.HasPrefix(t, "--") {
+			continue
+		}
+		clean = append(clean, t)
+	}
+	return strings.Join(clean, "\n")
 }

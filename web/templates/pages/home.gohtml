@@ -7,45 +7,13 @@
         .price { color:#0d6efd; font-weight:600; }
     </style>
 
-    <h1 class="h4 mb-4 text-center text-uppercase">Каталог товаров</h1>
+    <h1 class="h4 mb-4 text-center text-uppercase">
+        <strong>myApp</strong> — это учебный, но продакшен-готовый boilerplate веб-сервера на Go 1.25.1.
+    </h1>
+    <ul class="text-start mx-auto" style="max-width:800px;">
+        <li>Работает за NGINX (реверс-прокси), обеспечивая безопасность, производительность и масштабируемость.</li>
+    </ul>
 
     <div class="row g-4">
-        <!-- Товар 1 -->
-        <div class="col-6 col-md-4 col-lg-3">
-            <div class="card h-100 border-0 shadow-sm product-card">
-                <svg class="bd-placeholder-img card-img-top rounded-top" width="100%" height="300"
-                     xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Placeholder: Фото товара 1"
-                     preserveAspectRatio="xMidYMid slice" focusable="false">
-                    <title>Фото товара 1</title>
-                    <rect width="100%" height="100%" fill="#eee"></rect>
-                    <text x="50%" y="50%" fill="#aaa" dy=".3em" text-anchor="middle">600×600</text>
-                </svg>
-                <div class="card-body text-center">
-                    <h6 class="card-title mb-1">Товар № 1</h6>
-                    <div class="text-muted small mb-2">Artikkeli ART-0001</div>
-                    <div class="price mb-3">29,90 €</div>
-                    <a href="/product/art-0001" class="btn btn-outline-primary btn-sm w-100">Подробнее</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Товар 2 -->
-        <div class="col-6 col-md-4 col-lg-3">
-            <div class="card h-100 border-0 shadow-sm product-card">
-                <svg class="bd-placeholder-img card-img-top rounded-top" width="100%" height="300"
-                     xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Placeholder: Фото товара 2"
-                     preserveAspectRatio="xMidYMid slice" focusable="false">
-                    <title>Фото товара 2</title>
-                    <rect width="100%" height="100%" fill="#eee"></rect>
-                    <text x="50%" y="50%" fill="#aaa" dy=".3em" text-anchor="middle">600×600</text>
-                </svg>
-                <div class="card-body text-center">
-                    <h6 class="card-title mb-1">Товар № 2</h6>
-                    <div class="text-muted small mb-2">Artikkeli ART-0002</div>
-                    <div class="price mb-3">49,00 €</div>
-                    <a href="/product/art-0002" class="btn btn-outline-primary btn-sm w-100">Подробнее</a>
-                </div>
-            </div>
-        </div>
     </div>
 {{end}}
