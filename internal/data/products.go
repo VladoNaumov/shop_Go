@@ -3,7 +3,7 @@ package data
 
 import (
 	"context"
-	"fmt"
+	"myApp/internal/core"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -28,7 +28,10 @@ func ListAllProducts(ctx context.Context, db *sqlx.DB) ([]Product, error) {
 
 	var items []Product
 	if err := db.SelectContext(ctx, &items, q); err != nil {
-		return nil, fmt.Errorf("list all products: %w", err)
+		core.LogError("list all products", map[string]interface{}{
+			"query": q,
+			"error": err.Error(),
+		})
 	}
 	return items, nil
 }
