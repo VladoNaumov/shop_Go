@@ -130,6 +130,7 @@ func registerRoutes(r *chi.Mux, tpl *view.Templates) {
 	r.Get("/form", handler.FormIndex(tpl))
 	r.Post("/form", handler.FormSubmit(tpl))
 	r.Get("/debug", handler.Debug)
+	r.Get("/product_json", handler.ProductJSON())
 	r.Get("/catalog", handler.Catalog(tpl))
 	r.HandleFunc("/product", handler.Product(tpl))
 	r.NotFound(handler.NotFound(tpl))

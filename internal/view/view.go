@@ -134,5 +134,5 @@ func (t *Templates) Render(
 // 4. Шаблон "base.gohtml" получает PageData и отрисовывает:
 //      {{ .Title }}        → Заголовок страницы
 //      {{ .CSRFField }}    → <input type="hidden" name="_csrf" ...>
-//      {{ .Nonce }}        → nonce в meta-тегах CSP
+//      {{ .Nonce }}        → nonce в meta-тегах CSP (.Nonce — это одноразовый токен (random string), который вставляется в HTML-страницу для защиты от XSS-атак).
 //      {{ .Data }}         → твои данные (форма, товары и т.д.)
