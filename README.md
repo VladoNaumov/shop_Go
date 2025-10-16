@@ -39,7 +39,7 @@ myApp/
 │  │  │  ├─ about.go                # /about (HTML)
 │  │  │  ├─ form.go                 # /form (GET/POST, валидация, PRG)
 │  │  │  ├─ catalog.go              # товары из MySQL (ListAllProducts → Render)
-│  │  │  └─ misc.go                 # /healthz (JSON), NotFound (404 HTML)
+│  │  │  └─ misc.go                 # /debug (JSON), NotFound (404 HTML)
 │  │  └─ middleware/
 │  │     ├─ proxy.go                # TrustedProxy для NGINX (X-Forwarded-For, Proto)
 │  │     └─ security.go             # CSP, XFO, nosniff, Referrer, Permissions, COOP, HSTS
@@ -74,7 +74,7 @@ myApp/
 | `/about`       | О проекте                                   | HTML  |
 | `/form` (GET)  | Форма с CSRF и nonce                        | HTML  |
 | `/form` (POST) | Валидация, санитизация, PRG (/form?ok=1)    | HTML  |
-| `/healthz`     | {"status":"ok"} (доступ через NGINX)        | JSON  |
+| `/debug  `     | {"status":"info"} (доступ через NGINX)      | JSON  |
 | `/assets/*`    | Статика (кэш и gzip в NGINX)                | Static|
 | `/*`           | 404 Not Found (шаблон)                      | HTML  |
 

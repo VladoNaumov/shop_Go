@@ -8,8 +8,8 @@ import (
 	"myApp/internal/view"
 )
 
-// Health возвращает обработчик для проверки состояния сервера (OWASP A09)
-func Health(w http.ResponseWriter, r *http.Request) {
+// Debug возвращает обработчик для проверки состояния сервера (OWASP A09)
+func Debug(w http.ResponseWriter, r *http.Request) {
 	info := map[string]interface{}{
 		"request": map[string]interface{}{
 			"method":  r.Method,
