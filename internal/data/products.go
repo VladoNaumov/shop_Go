@@ -1,4 +1,5 @@
 // internal/data/products.go
+
 package data
 
 import (
@@ -22,7 +23,7 @@ type Product struct {
 // ListAllProducts с JOIN на категории
 func ListAllProducts(ctx context.Context, db *sqlx.DB) ([]Product, error) {
 	const q = `
-		SELECT p.id, p.name, p.article, p.price, p.image_alt, p.created_at
+		SELECT p.id, p.name, p.price, p.image_alt
 		FROM products p
 		ORDER BY p.name ASC`
 
