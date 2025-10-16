@@ -20,7 +20,7 @@ func Debug(w http.ResponseWriter, r *http.Request) {
 		"response": map[string]interface{}{
 			"content_type": "application/json",
 			"status":       http.StatusOK,
-			"note":         "Это ответ, который вы сейчас видите",
+			"note":         "OK!",
 		},
 	}
 
