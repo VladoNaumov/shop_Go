@@ -129,8 +129,9 @@ func registerRoutes(r *chi.Mux, tpl *view.Templates) {
 	r.Get("/about", handler.About(tpl))
 	r.Get("/form", handler.FormIndex(tpl))
 	r.Post("/form", handler.FormSubmit(tpl))
-	r.Get("/healthz", handler.Health)
+	r.Get("/health", handler.Health)
 	r.Get("/catalog", handler.Catalog(tpl))
+	r.HandleFunc("/product", handler.Product(tpl))
 	r.NotFound(handler.NotFound(tpl))
 }
 
