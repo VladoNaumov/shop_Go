@@ -1,5 +1,6 @@
 package data
 
+// migrations.go
 import (
 	"fmt"
 	"os"

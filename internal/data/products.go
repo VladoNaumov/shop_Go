@@ -20,7 +20,6 @@ type Product struct {
 	CreatedAt  time.Time `db:"created_at" json:"created_at"`
 }
 
-// ListAllProducts с JOIN на категории
 func ListAllProducts(ctx context.Context, db *sqlx.DB) ([]Product, error) {
 	const q = `
 		SELECT p.id, p.name, p.price, p.image_alt
@@ -28,6 +27,9 @@ func ListAllProducts(ctx context.Context, db *sqlx.DB) ([]Product, error) {
 		ORDER BY p.name ASC`
 
 	var items []Product
+
+	// context.Context — “контейнер” для управления временем жизни операции и передачи метаданных.
+	// db.SelectContext - Возвращает много строк (срез структур)
 	if err := db.SelectContext(ctx, &items, q); err != nil {
 		core.LogError("list all products", map[string]interface{}{
 			"query": q,
@@ -38,7 +40,9 @@ func ListAllProducts(ctx context.Context, db *sqlx.DB) ([]Product, error) {
 	return items, nil
 }
 
-// GetProductByID — возвращаем Product
+// GetProductByID — находим товар по ID
+// context.Context — “контейнер” для управления временем жизни операции и передачи метаданных.
+// db.GetContext - Возвращает одну строку (один объект).
 func GetProductByID(ctx context.Context, db *sqlx.DB, id int) (*Product, error) {
 	var p Product
 
@@ -55,5 +59,5 @@ func GetProductByID(ctx context.Context, db *sqlx.DB, id int) (*Product, error) 
 		})
 		return nil, err
 	}
-	return &p, nil // Возвращаем как есть!
+	return &p, nil
 }
