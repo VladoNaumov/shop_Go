@@ -26,7 +26,6 @@ func NewMigrations(db *sqlx.DB) *Migrations {
 func (m *Migrations) RunMigrations() error {
 	if !EnableMigrations {
 		core.LogInfo("Миграции отключены (EnableMigrations=false)", nil)
-		fmt.Println("ℹ️ Миграции отключены")
 		return nil
 	}
 
@@ -40,7 +39,7 @@ func (m *Migrations) RunMigrations() error {
 			"file":  MigrationFile,
 			"error": err.Error(),
 		})
-		fmt.Println("❌ Ошибка применения миграции")
+		fmt.Println("Ошибка применения миграции")
 		return err
 	}
 
@@ -58,7 +57,7 @@ func (m *Migrations) RunMigrations() error {
 				"sql":   stmt,
 				"error": err.Error(),
 			})
-			fmt.Println("❌ Ошибка применения миграции")
+			fmt.Println(" Ошибка применения миграции")
 			return fmt.Errorf("ошибка выполнения SQL: %w", err)
 		}
 		executed++
@@ -68,7 +67,7 @@ func (m *Migrations) RunMigrations() error {
 		"file":       MigrationFile,
 		"statements": executed,
 	})
-	fmt.Println("✅ Миграция применена")
+	fmt.Println(" Миграция применена")
 	return nil
 }
 
