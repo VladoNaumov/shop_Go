@@ -48,7 +48,7 @@ func New() (*Templates, error) {
 		"about":    {"web/templates/pages/about.gohtml"},
 		"form":     {"web/templates/pages/form.gohtml"},
 		"catalog":  {"web/templates/pages/catalog.gohtml"},
-		"product":  {"web/templates/pages/product.gohtml"},
+		"product":  {"web/templates/pages/show_product.gohtml"},
 		"notfound": {"web/templates/pages/404.gohtml"},
 	}
 

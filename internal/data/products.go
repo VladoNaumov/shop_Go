@@ -33,6 +33,27 @@ func ListAllProducts(ctx context.Context, db *sqlx.DB) ([]Product, error) {
 			"query": q,
 			"error": err.Error(),
 		})
+		return nil, err
 	}
 	return items, nil
+}
+
+// GetProductByID — возвращаем Product
+func GetProductByID(ctx context.Context, db *sqlx.DB, id int) (*Product, error) {
+	var p Product
+
+	const q = `
+		SELECT id, name, article, price, image_alt
+		FROM products 
+		WHERE id = ?`
+
+	if err := db.GetContext(ctx, &p, q, id); err != nil {
+		core.LogError("get product by id", map[string]interface{}{
+			"id":    id,
+			"error": err.Error(),
+			"query": q,
+		})
+		return nil, err
+	}
+	return &p, nil // Возвращаем как есть!
 }

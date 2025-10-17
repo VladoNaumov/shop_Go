@@ -126,13 +126,17 @@ func serveStatic(r *chi.Mux) {
 // Все handlers получают DB из контекста автоматически
 func registerRoutes(r *chi.Mux, tpl *view.Templates) {
 	r.Get("/", handler.Home(tpl))
-	r.Get("/about", handler.About(tpl))
+	r.Get("/catalog", handler.Catalog(tpl))
+	r.Get("/product/{id}", handler.Product(tpl))
+
 	r.Get("/form", handler.FormIndex(tpl))
 	r.Post("/form", handler.FormSubmit(tpl))
-	r.Get("/debug/json", handler.Debug)
+
+	r.Get("/about", handler.About(tpl))
+
+	r.Get("/debug", handler.Debug)
 	r.Get("/catalog/json", handler.CatalogJSON())
-	r.Get("/catalog", handler.Catalog(tpl))
-	r.HandleFunc("/product", handler.Product(tpl))
+
 	r.NotFound(handler.NotFound(tpl))
 }
 
