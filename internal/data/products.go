@@ -1,7 +1,6 @@
-// internal/data/products.go
-
 package data
 
+// internal/data/products.go
 import (
 	"context"
 	"myApp/internal/core"
