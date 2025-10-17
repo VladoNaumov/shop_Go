@@ -22,14 +22,15 @@ myApp/
 │  │ 
 │  ├─ core/
 │  │  ├─ config.go                  # ENV-конфиг, проверки для prod
+│  │  ├─ cfx.go                     # общий ключ для nonce
 │  │  ├─ errors.go                  # AppError, фабрики (BadRequest, Internal)
 │  │  ├─ response.go                # JSON(), Fail() (RFC7807)
-│  │  └─ logfile.go                 # JSON-логи: INFO в консоль+файл, ERROR только в файл (ротация 7 дней)
+│  │  └─ logger.go                  # JSON-логи: INFO/ERROR только в файл (ротация 7 дней)
 │  │ 
-│  ├─ data/                         # Слой работы с MySQL
+│  ├─ storage/                      # Слой работы с MySQL
 │  │  ├─ db.go                      # sqlx.DB пул, GetDBFromContext(), Close()
 │  │  ├─ migrations.go              # Автомиграции (EnableMigrations), числовая сортировка, транзакции
-│  │  └─ products.go                # Product struct, ListAllProducts(), GetProductByID()
+│  │  └─ products_repo.go           # Product struct, ListAllProducts(), GetProductByID()
 │  │  
 │  ├─ http/
 │  │  ├─ handler/
@@ -37,7 +38,8 @@ myApp/
 │  │  │  ├─ about.go                # /about (HTML)
 │  │  │  ├─ form.go                 # /form (GET/POST, валидация, PRG)
 │  │  │  ├─ catalog.go              # товары из MySQL (ListAllProducts → Render)
-│  │  │  └─ misc.go                 # /debug (JSON), NotFound (404 HTML)
+│  │  │  ├─ notFound.go             # NotFound (404 HTML)
+│  │  │  └─ misc.go                 # /debug (JSON)
 │  │  └─ middleware/
 │  │     ├─ proxy.go                # TrustedProxy для NGINX (X-Forwarded-For, Proto)
 │  │     └─ security.go             # CSP, XFO, nosniff, Referrer, Permissions, COOP, HSTS
@@ -45,7 +47,7 @@ myApp/
 │     └─ view.go                    # Централизованный рендер шаблонов (catalog.html)
 │ 
 ├─ migrations/                      # SQL миграции (в корне!)
-│  └─ 001_schema.sql           # DROP+CREATE products, INSERT 5 товаров, индексы
+│  └─ 001_schema.sql                # DROP+CREATE products, INSERT 5 товаров
 │ 
 ├─ web/
 │  ├─ assets/                      # CSS/JS/изображения/шрифты

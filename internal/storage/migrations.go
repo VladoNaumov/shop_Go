@@ -1,4 +1,4 @@
-package data
+package storage
 
 // migrations.go
 import (

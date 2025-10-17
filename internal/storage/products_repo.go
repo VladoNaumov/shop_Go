@@ -1,6 +1,6 @@
-package data
+package storage
 
-// internal/data/products.go
+// internal/storage/ products_repo.go
 import (
 	"context"
 	"myApp/internal/core"

@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"myApp/internal/core"
-	"myApp/internal/data"
+	"myApp/internal/storage"
 )
 
 // CatalogJSON возвращает каталог товаров в формате JSON
@@ -18,7 +18,7 @@ func CatalogJSON() http.HandlerFunc {
 		}
 
 		// Получаем БД из контекста
-		db := data.GetDBFromContext(r.Context())
+		db := storage.GetDBFromContext(r.Context())
 		if db == nil {
 			core.LogError("DB недоступна в контексте", nil)
 			core.Fail(w, r, core.Internal("Внутренняя ошибка", nil))
@@ -26,7 +26,7 @@ func CatalogJSON() http.HandlerFunc {
 		}
 
 		// Загружаем товары
-		items, err := data.ListAllProducts(r.Context(), db)
+		items, err := storage.ListAllProducts(r.Context(), db)
 		if err != nil {
 			core.LogError("Ошибка загрузки каталога", map[string]interface{}{
 				"error": err.Error(),

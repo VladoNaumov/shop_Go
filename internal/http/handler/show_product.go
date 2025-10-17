@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"myApp/internal/core"
-	"myApp/internal/data"
+	"myApp/internal/storage"
 	"myApp/internal/view"
 
 	"github.com/go-chi/chi/v5"
@@ -17,7 +17,7 @@ import (
 func Product(tpl *view.Templates) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 1. Извлекаем DB из контекста (как в Catalog)
-		db := data.GetDBFromContext(r.Context())
+		db := storage.GetDBFromContext(r.Context())
 		if db == nil {
 			core.LogError("DB недоступна в контексте", nil)
 			core.Fail(w, r, core.Internal("Внутренняя ошибка", nil))
@@ -36,7 +36,7 @@ func Product(tpl *view.Templates) http.HandlerFunc {
 			return
 		}
 
-		product, err := data.GetProductByID(r.Context(), db, id)
+		product, err := storage.GetProductByID(r.Context(), db, id)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				core.LogError("Товар не найден", map[string]interface{}{
