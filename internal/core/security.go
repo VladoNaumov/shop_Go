@@ -36,14 +36,6 @@ func SecureHeaders() func(http.Handler) http.Handler {
 			w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
 			w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 
-			// Проверяет на Query Parameter Pollution для GET-запросов
-			for _, vv := range r.URL.Query() {
-				if len(vv) > 1 {
-					http.Error(w, "Обнаружено несколько значений для параметра запроса", http.StatusBadRequest)
-					return
-				}
-			}
-
 			next.ServeHTTP(w, r)
 		})
 	}
