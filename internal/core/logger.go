@@ -84,10 +84,8 @@ func LogInfo(msg string, fields map[string]interface{}) {
 	defer globalLogger.mu.Unlock()
 
 	event := globalLogger.mainLogger.Info()
-	if fields != nil {
-		for k, v := range fields {
-			event = event.Any(k, v)
-		}
+	for k, v := range fields {
+		event = event.Interface(k, v)
 	}
 	event.Msg(msg)
 }
@@ -100,10 +98,8 @@ func LogError(msg string, fields map[string]interface{}) {
 	defer globalLogger.mu.Unlock()
 
 	event := globalLogger.errorLogger.Error()
-	if fields != nil {
-		for k, v := range fields {
-			event = event.Any(k, v)
-		}
+	for k, v := range fields {
+		event = event.Interface(k, v)
 	}
 	event.Msg(msg)
 }

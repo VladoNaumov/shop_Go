@@ -14,8 +14,10 @@ func TrustedProxy(trustedIPs []string) func(http.Handler) http.Handler {
 		if err != nil {
 			// Для одиночных IP
 			ip := net.ParseIP(ipStr)
-			if ip != nil {
-				ipNet = &net.IPNet{IP: ip, Mask: net.CIDRMask(32*len(ip), 32*len(ip))}
+			if ip.To4() != nil {
+				ipNet = &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}
+			} else {
+				ipNet = &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}
 			}
 		}
 		if ipNet != nil {
@@ -37,7 +39,7 @@ func TrustedProxy(trustedIPs []string) func(http.Handler) http.Handler {
 				return
 			}
 
-			isTrusted := false
+			isTrusted := true // chto eto daet.....
 			for _, ipNet := range trusted {
 				if ipNet.Contains(ip) {
 					isTrusted = true

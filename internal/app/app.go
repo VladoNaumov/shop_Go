@@ -1,11 +1,11 @@
 package app
 
-// app.go
 import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
+	"os"
 
 	"myApp/internal/core"
 	"myApp/internal/http/handler"
@@ -19,7 +19,7 @@ import (
 )
 
 // New — собирает HTTP-роутер из модулей (middleware, DB, маршруты, шаблоны)
-func New(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) { // ← Добавлен db параметр
+func New(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) {
 	tpl, err := initTemplates()
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func New(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) { /
 	r := chi.NewRouter()
 
 	// Подключаем middleware в правильном порядке
-	useDatabaseMiddleware(r, db) // ← DB в контекст (первым!)
+	useDatabaseMiddleware(r, db)
 	useBaseMiddleware(r, cfg)
 	useSecurityMiddleware(r, cfg)
 	useCSRF(r, cfg, csrfKey)
@@ -48,11 +48,9 @@ func initTemplates() (*view.Templates, error) {
 /* ---------- Database Middleware ---------- */
 
 // useDatabaseMiddleware — добавляет *sqlx.DB в контекст каждого запроса
-// DB доступен во всех handlers через storage.GetDBFromContext()
 func useDatabaseMiddleware(r *chi.Mux, db *sqlx.DB) {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Помещает DB в контекст запроса через storage.CtxDBKey
 			ctx := context.WithValue(r.Context(), storage.CtxDBKey{}, db)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -63,20 +61,20 @@ func useDatabaseMiddleware(r *chi.Mux, db *sqlx.DB) {
 
 // useBaseMiddleware — базовые middleware (nonce, логи, таймауты)
 func useBaseMiddleware(r *chi.Mux, cfg core.Config) {
-	r.Use(withNonce())                                     // Nonce для CSP (первым!)
-	r.Use(core.TrustedProxy([]string{"127.0.0.1", "::1"})) // Доверенные прокси
-	r.Use(middleware.RequestID)                            // Уникальный ID запроса
-	r.Use(middleware.RealIP)                               // Реальный IP клиента
-	r.Use(middleware.Logger)                               // Логирование запросов
-	r.Use(middleware.Recoverer)                            // Восстановление после паники
-	r.Use(middleware.Timeout(cfg.RequestTimeout))          // Таймаут запроса
+	r.Use(withNonce())
+	r.Use(core.TrustedProxy([]string{"127.0.0.1", "::1"}))
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(cfg.RequestTimeout))
 }
 
-// useSecurityMiddleware — CSP, X-Frame-Options, HSTS (при HTTPS)
+// useSecurityMiddleware — CSP, X-Frame-Options, HSTS
 func useSecurityMiddleware(r *chi.Mux, cfg core.Config) {
-	r.Use(core.SecureHeaders()) // Заголовки безопасности
+	r.Use(core.SecureHeaders())
 	if cfg.Secure {
-		r.Use(core.HSTS(cfg.Env == "prod")) // HSTS только при HTTPS и в продакшене
+		r.Use(core.HSTS(cfg.Env == "prod"))
 	}
 }
 
@@ -89,14 +87,12 @@ func useCSRF(r *chi.Mux, cfg core.Config, csrfKey []byte) {
 		csrf.HttpOnly(true),                 // Cookie HttpOnly
 		csrf.Path("/"),                      // CSRF для всех путей
 	))
-	// Предупреждение в не-продакшене без HTTPS
 	if !cfg.Secure && cfg.Env != "prod" {
 		core.LogError("CSRF работает без HTTPS в не-продакшен среде", nil)
 	}
 }
 
 // withNonce — middleware для генерации nonce для CSP
-// Добавляет случайный nonce в контекст для шаблонов
 func withNonce() func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +102,6 @@ func withNonce() func(next http.Handler) http.Handler {
 				core.Fail(w, r, core.Internal("Ошибка генерации nonce", err))
 				return
 			}
-			// Nonce доступен в шаблонах через core.CtxNonce
 			ctx := context.WithValue(r.Context(), core.CtxNonce, nonce)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -117,25 +112,24 @@ func withNonce() func(next http.Handler) http.Handler {
 
 // serveStatic — обслуживает статические файлы из web/assets
 func serveStatic(r *chi.Mux) {
+	if _, err := os.Stat("web/assets"); os.IsNotExist(err) {
+		core.LogError("Директория web/assets не найдена", nil)
+		return
+	}
 	fs := http.StripPrefix("/assets/", http.FileServer(http.Dir("web/assets")))
 	r.Handle("/assets/*", fs)
 }
 
-// registerRoutes — регистрирует маршруты приложения
-// Все handlers получают DB из контекста автоматически
+// registerRoutes — регистрирует маршруты приложения // todo: cfg ne ispolzuitsja !!!
 func registerRoutes(r *chi.Mux, tpl *view.Templates) {
 	r.Get("/", handler.Home(tpl))
 	r.Get("/catalog", handler.Catalog(tpl))
 	r.Get("/product/{id}", handler.Product(tpl))
-
 	r.Get("/form", handler.FormIndex(tpl))
 	r.Post("/form", handler.FormSubmit(tpl))
-
 	r.Get("/about", handler.About(tpl))
-
 	r.Get("/debug", handler.Debug)
 	r.Get("/catalog/json", handler.CatalogJSON())
-
 	r.NotFound(handler.NotFound(tpl))
 }
 
@@ -143,7 +137,7 @@ func registerRoutes(r *chi.Mux, tpl *view.Templates) {
 
 // generateNonce — генерирует криптографически стойкий nonce для CSP
 func generateNonce() (string, error) {
-	b := make([]byte, 16) // 16 байт = 128 бит энтропии
+	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}

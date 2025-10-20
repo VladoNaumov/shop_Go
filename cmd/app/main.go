@@ -1,6 +1,5 @@
 package main
 
-//main.go
 import (
 	"context"
 	"crypto/sha256"
@@ -20,59 +19,54 @@ import (
 )
 
 func main() {
-	// 1️. Загружаем конфигурацию приложения и инициализируем логирование
+	// 1. Загружаем конфигурацию и инициализируем логирование
 	config := core.Load()
-	log.Printf("INFO: Secure=%v, Env=%s", config.Secure, config.Env)
 
-	// 2. Инициализация ежедневного Log журнала
+	log.Printf("INFO: Secure=%v, Env=%s", config.Secure, config.Env)
 	core.InitDailyLog()
 
-	// 3. Инициализируем подключение к MySQL с продакшн pool настройками
-	db, err := storage.NewDB()
+	// 2. Инициализируем подключение к MySQL с ретраями
+	db, err := storage.NewDB() // Предполагается реализация в storage
 	if err != nil {
 		core.LogError("Ошибка инициализации MySQL", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
 
-	// Закрываем DB при завершении приложения (graceful shutdown)
-	defer func() {
-		if cerr := storage.Close(db); cerr != nil {
-			core.LogError("Ошибка закрытия MySQL", map[string]interface{}{"error": cerr.Error()})
-		}
-	}()
-
-	// 4. Выполнить миграции
+	// 3. Выполнить миграции
 	migrations := storage.NewMigrations(db)
 	if err := migrations.RunMigrations(); err != nil {
 		core.LogError("Ошибка выполнения миграций", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
 
-	// 5. Закрываем файлы логов при завершении приложения
-	defer core.Close()
-
-	// 6. Создаём контекст для фоновых задач (ротация логов)
+	// 4. Создаём контекст для фоновых задач (ротация логов)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 7. Запускаем ежедневную ротацию логов
+	// 5. Запускаем ежедневную ротацию логов
 	startLogRotation(ctx)
 
-	// 8. Инициализируем HTTP-обработчик с CSRF и DB в контексте
-	handler := initHandler(config, db) // ← Передаём db в initHandler
+	// 6. Инициализируем HTTP-обработчик с CSRF и DB
+	handler := initHandler(config, db)
 
-	// 9. Создаём HTTP-сервер с безопасными таймаутами (OWASP A05)
+	// 7. Создаём HTTP-сервер с таймаутами (OWASP A05)
 	srv := newHTTPServer(config, handler)
 
-	// 10. Настраиваем перехват сигналов SIGINT/SIGTERM
+	// 8. Настраиваем перехват сигналов SIGINT/SIGTERM
 	sigs, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// 11. Запускаем HTTP-сервер
+	// 9. Запускаем HTTP-сервер
 	runServer(srv, config)
 
-	// 12. Ожидаем сигнал завершения
+	// 10. Ожидаем сигнал завершения
 	waitShutdown(sigs, srv, config)
+
+	// 11. Закрываем DB и логи последовательно
+	if cerr := storage.Close(db); cerr != nil {
+		core.LogError("Ошибка закрытия MySQL", map[string]interface{}{"error": cerr.Error()})
+	}
+	core.Close() // Закрываем логгер последним
 }
 
 // startLogRotation запускает ротацию логов раз в сутки
@@ -91,10 +85,8 @@ func startLogRotation(ctx context.Context) {
 	}()
 }
 
-// initHandler создаёт обработчик приложения с CSRF-защитой и DB middleware
-// Отвечает за инициализацию app с передачей DB для handlers
+// initHandler создаёт обработчик приложения с CSRF-защитой и DB
 func initHandler(cfg core.Config, db *sqlx.DB) http.Handler {
-	// Передаём db в app.New для middleware и handlers
 	handler, err := app.New(cfg, db, derive32(cfg.CSRFKey))
 	if err != nil {
 		core.LogError("Ошибка инициализации приложения", map[string]interface{}{"error": err.Error()})
@@ -115,7 +107,7 @@ func newHTTPServer(cfg core.Config, h http.Handler) *http.Server {
 	}
 }
 
-// gracefulShutdown выполняет корректное завершение HTTP сервера
+// gracefulShutdown выполняет корректное завершение HTTP-сервера
 func gracefulShutdown(srv *http.Server, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -133,7 +125,7 @@ func runServer(srv *http.Server, cfg core.Config) {
 	}()
 }
 
-// waitShutdown ожидает сигнал завершения и shutdown сервера
+// waitShutdown ожидает сигнал завершения и выполняет shutdown
 func waitShutdown(sigs context.Context, srv *http.Server, cfg core.Config) {
 	<-sigs.Done()
 	log.Println("INFO: http: начат процесс завершения")
