@@ -1,6 +1,6 @@
 package core
 
-//logger.go
+// logger.go
 import (
 	"encoding/json"
 	"io"
@@ -18,7 +18,10 @@ type Logger struct {
 	mu        sync.Mutex
 }
 
-var globalLogger *Logger
+var (
+	globalLogger *Logger
+	cleanupOnce  sync.Once
+)
 
 type LogEntry struct {
 	Time   string                 `json:"time"`
@@ -28,13 +31,22 @@ type LogEntry struct {
 }
 
 func InitDailyLog() {
+	// Закроем предыдущие дескрипторы, если есть (важно для ротации)
+	if globalLogger != nil {
+		globalLogger.mu.Lock()
+		_ = globalLogger.mainFile.Close()
+		_ = globalLogger.errorFile.Close()
+		globalLogger.mu.Unlock()
+		globalLogger = nil
+	}
+
 	if err := os.MkdirAll("logs", 0755); err != nil {
 		log.Fatal("Ошибка создания директории logs:", err)
 	}
 
 	dateStr := time.Now().Format("02-01-2006")
-	mainPath := filepath.Join("logs", dateStr+".log")            // 17-10-2025.log
-	errorPath := filepath.Join("logs", "errors-"+dateStr+".log") // errors-17-10-2025.log
+	mainPath := filepath.Join("logs", dateStr+".log")
+	errorPath := filepath.Join("logs", "errors-"+dateStr+".log")
 
 	mainFile, err := os.OpenFile(mainPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -56,7 +68,8 @@ func InitDailyLog() {
 	log.SetOutput(newSplitWriter(mainFile, errorFile))
 	log.SetFlags(0) // Без стандартных префиксов
 
-	go cleanupOldLogs("logs", 7)
+	// Запускаем уборку старых логов только один раз за жизнь процесса
+	cleanupOnce.Do(func() { go cleanupOldLogs("logs", 7) })
 }
 
 type splitWriter struct {
@@ -103,7 +116,6 @@ func detectLevel(p []byte) string {
 	if strings.Contains(ss, `"LEVEL":"ERROR"`) || strings.Contains(ss, " ERROR ") {
 		return "ERROR"
 	}
-
 	return "INFO"
 }
 
@@ -116,7 +128,6 @@ func LogInfo(msg string, fields map[string]interface{}) {
 	if fields != nil {
 		entry.Fields = fields
 	}
-
 	data, _ := json.Marshal(entry)
 	log.Println(string(data))
 }
@@ -130,7 +141,6 @@ func LogError(msg string, fields map[string]interface{}) {
 	if fields != nil {
 		entry.Fields = fields
 	}
-
 	data, _ := json.Marshal(entry)
 	log.Println(string(data))
 }
@@ -143,18 +153,15 @@ func cleanupOldLogs(dir string, days int) {
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -days)
-
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
-
 		info, err := file.Info()
 		if err != nil {
 			log.Printf("ERROR: Инфо о %s: %v", file.Name(), err)
 			continue
 		}
-
 		if info.ModTime().Before(cutoff) {
 			path := filepath.Join(dir, file.Name())
 			if err := os.Remove(path); err != nil {
