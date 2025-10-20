@@ -59,10 +59,10 @@ func InitDailyLog() {
 		os.Exit(1)
 	}
 
-	// Настраиваем Zerolog для основного лога
+	// Настраиваем "Zerolog" для основного лога
 	mainLogger := zerolog.New(mainFile).With().Timestamp().Logger()
 
-	// Настраиваем Zerolog для логов ошибок
+	// Настраиваем "Zerolog" для логов ошибок
 	errorLogger := zerolog.New(errorFile).With().Timestamp().Logger()
 
 	globalLogger = &Logger{
