@@ -1,7 +1,6 @@
 package core
 
 // security.go
-
 import (
 	"net/http"
 )
