@@ -20,11 +20,25 @@ type ProblemDetail struct {
 }
 
 // JSON отправляет JSON-ответ с указанным статусом HTTP (OWASP A09: Security Logging and Monitoring Failures)
+// JSON отправляет JSON-ответ с указанным статусом HTTP.
+// OWASP A09: Security Logging and Monitoring Failures
 func JSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+
+	data, err := json.Marshal(v)
+	if err != nil {
 		LogError("Ошибка кодирования JSON", map[string]interface{}{"error": err.Error()})
+		http.Error(w, "Ошибка кодирования JSON", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(status)
+
+	if _, err := w.Write(data); err != nil {
+		LogError("Ошибка при отправке JSON-ответа", map[string]interface{}{
+			"error":  err.Error(),
+			"status": status,
+		})
 	}
 }
 

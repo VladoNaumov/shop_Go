@@ -23,14 +23,17 @@ func main() {
 	// 1️. Загружаем конфигурацию приложения и инициализируем логирование
 	config := core.Load()
 	log.Printf("INFO: Secure=%v, Env=%s", config.Secure, config.Env)
+
+	// 2. Инициализация ежедневного Log журнала
 	core.InitDailyLog()
 
-	// 2️. Инициализируем подключение к MySQL с продакшн pool настройками
+	// 3. Инициализируем подключение к MySQL с продакшн pool настройками
 	db, err := storage.NewDB()
 	if err != nil {
 		core.LogError("Ошибка инициализации MySQL", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
+
 	// Закрываем DB при завершении приложения (graceful shutdown)
 	defer func() {
 		if cerr := storage.Close(db); cerr != nil {
@@ -38,37 +41,37 @@ func main() {
 		}
 	}()
 
-	// 3. Выполнить миграции
+	// 4. Выполнить миграции
 	migrations := storage.NewMigrations(db)
 	if err := migrations.RunMigrations(); err != nil {
 		core.LogError("Ошибка выполнения миграций", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
 
-	// 4. Закрываем файлы логов при завершении приложения
+	// 5. Закрываем файлы логов при завершении приложения
 	defer core.Close()
 
-	// 5. Создаём контекст для фоновых задач (ротация логов)
+	// 6. Создаём контекст для фоновых задач (ротация логов)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 6. Запускаем ежедневную ротацию логов
+	// 7. Запускаем ежедневную ротацию логов
 	startLogRotation(ctx)
 
-	// 7. Инициализируем HTTP-обработчик с CSRF и DB в контексте
+	// 8. Инициализируем HTTP-обработчик с CSRF и DB в контексте
 	handler := initHandler(config, db) // ← Передаём db в initHandler
 
-	// 8. Создаём HTTP-сервер с безопасными таймаутами (OWASP A05)
+	// 9. Создаём HTTP-сервер с безопасными таймаутами (OWASP A05)
 	srv := newHTTPServer(config, handler)
 
-	// 9. Настраиваем перехват сигналов SIGINT/SIGTERM
+	// 10. Настраиваем перехват сигналов SIGINT/SIGTERM
 	sigs, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// 10. Запускаем HTTP-сервер
+	// 11. Запускаем HTTP-сервер
 	runServer(srv, config)
 
-	// 11. Ожидаем сигнал завершения
+	// 12. Ожидаем сигнал завершения
 	waitShutdown(sigs, srv, config)
 }
 
@@ -92,7 +95,7 @@ func startLogRotation(ctx context.Context) {
 // Отвечает за инициализацию app с передачей DB для handlers
 func initHandler(cfg core.Config, db *sqlx.DB) http.Handler {
 	// Передаём db в app.New для middleware и handlers
-	handler, err := app.New(cfg, db, derive32(cfg.CSRFKey)) // ← Добавлен db параметр
+	handler, err := app.New(cfg, db, derive32(cfg.CSRFKey))
 	if err != nil {
 		core.LogError("Ошибка инициализации приложения", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)

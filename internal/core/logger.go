@@ -1,21 +1,21 @@
 package core
 
-// logger.go
 import (
-	"encoding/json"
-	"io"
-	"log"
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 type Logger struct {
-	mainFile  *os.File
-	errorFile *os.File
-	mu        sync.Mutex
+	mainLogger  *zerolog.Logger
+	errorLogger *zerolog.Logger
+	mainFile    *os.File
+	errorFile   *os.File
+	mu          sync.Mutex
 }
 
 var (
@@ -23,15 +23,9 @@ var (
 	cleanupOnce  sync.Once
 )
 
-type LogEntry struct {
-	Time   string                 `json:"time"`
-	Level  string                 `json:"level"`
-	Msg    string                 `json:"msg"`
-	Fields map[string]interface{} `json:"fields,omitempty"`
-}
-
+// Инициализация ежедневного Log журнала
 func InitDailyLog() {
-	// Закроем предыдущие дескрипторы, если есть (важно для ротации)
+	// Закрываем предыдущие файлы, если есть
 	if globalLogger != nil {
 		globalLogger.mu.Lock()
 		_ = globalLogger.mainFile.Close()
@@ -40,115 +34,86 @@ func InitDailyLog() {
 		globalLogger = nil
 	}
 
+	// Создаём директорию logs
 	if err := os.MkdirAll("logs", 0755); err != nil {
-		log.Fatal("Ошибка создания директории logs:", err)
+		fmt.Fprintf(os.Stderr, "Ошибка создания директории logs: %v\n", err)
+		os.Exit(1)
 	}
 
+	// Формируем имена файлов на основе текущей даты
 	dateStr := time.Now().Format("02-01-2006")
 	mainPath := filepath.Join("logs", dateStr+".log")
 	errorPath := filepath.Join("logs", "errors-"+dateStr+".log")
 
+	// Открываем файлы
 	mainFile, err := os.OpenFile(mainPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		log.Fatal("Ошибка открытия основного лог-файла:", err)
+		fmt.Fprintf(os.Stderr, "Ошибка открытия основного лог-файла: %v\n", err)
+		os.Exit(1)
 	}
 
 	errorFile, err := os.OpenFile(errorPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		log.Printf("Ошибка открытия файла ошибок: %v", err)
+		fmt.Fprintf(os.Stderr, "Ошибка открытия файла ошибок: %v\n", err)
 		_ = mainFile.Close()
-		return
+		os.Exit(1)
 	}
+
+	// Настраиваем Zerolog для основного лога
+	mainLogger := zerolog.New(mainFile).With().Timestamp().Logger()
+
+	// Настраиваем Zerolog для логов ошибок
+	errorLogger := zerolog.New(errorFile).With().Timestamp().Logger()
 
 	globalLogger = &Logger{
-		mainFile:  mainFile,
-		errorFile: errorFile,
+		mainLogger:  &mainLogger,
+		errorLogger: &errorLogger,
+		mainFile:    mainFile,
+		errorFile:   errorFile,
 	}
 
-	log.SetOutput(newSplitWriter(mainFile, errorFile))
-	log.SetFlags(0) // Без стандартных префиксов
-
-	// Запускаем уборку старых логов только один раз за жизнь процесса
+	// Запускаем очистку старых логов один раз
 	cleanupOnce.Do(func() { go cleanupOldLogs("logs", 7) })
 }
 
-type splitWriter struct {
-	mainW io.Writer
-	errW  io.Writer
-	mu    sync.Mutex
-}
-
-func newSplitWriter(mainW, errW io.Writer) *splitWriter {
-	return &splitWriter{mainW: mainW, errW: errW}
-}
-
-func (w *splitWriter) Write(p []byte) (int, error) {
-	level := detectLevel(p)
-
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if level == "ERROR" {
-		if w.errW != nil {
-			_, _ = w.errW.Write(p)
-		}
-	} else {
-		if w.mainW != nil {
-			_, _ = w.mainW.Write(p)
-		}
-	}
-	return len(p), nil
-}
-
-func detectLevel(p []byte) string {
-	s := strings.TrimSpace(string(p))
-
-	if strings.HasPrefix(s, "{") && strings.Contains(s, `"level"`) {
-		var tmp struct {
-			Level string `json:"level"`
-		}
-		if json.Unmarshal(p, &tmp) == nil && tmp.Level != "" {
-			return strings.ToUpper(tmp.Level)
-		}
-	}
-
-	ss := strings.ToUpper(s)
-	if strings.Contains(ss, `"LEVEL":"ERROR"`) || strings.Contains(ss, " ERROR ") {
-		return "ERROR"
-	}
-	return "INFO"
-}
-
 func LogInfo(msg string, fields map[string]interface{}) {
-	entry := LogEntry{
-		Time:  time.Now().UTC().Format(time.RFC3339),
-		Level: "INFO",
-		Msg:   msg,
+	if globalLogger == nil {
+		return // Игнорируем, если логгер закрыт
 	}
+	globalLogger.mu.Lock()
+	defer globalLogger.mu.Unlock()
+
+	event := globalLogger.mainLogger.Info()
 	if fields != nil {
-		entry.Fields = fields
+		for k, v := range fields {
+			event = event.Any(k, v)
+		}
 	}
-	data, _ := json.Marshal(entry)
-	log.Println(string(data))
+	event.Msg(msg)
 }
 
 func LogError(msg string, fields map[string]interface{}) {
-	entry := LogEntry{
-		Time:  time.Now().UTC().Format(time.RFC3339),
-		Level: "ERROR",
-		Msg:   msg,
+	if globalLogger == nil {
+		return // Игнорируем, если логгер закрыт
 	}
+	globalLogger.mu.Lock()
+	defer globalLogger.mu.Unlock()
+
+	event := globalLogger.errorLogger.Error()
 	if fields != nil {
-		entry.Fields = fields
+		for k, v := range fields {
+			event = event.Any(k, v)
+		}
 	}
-	data, _ := json.Marshal(entry)
-	log.Println(string(data))
+	event.Msg(msg)
 }
 
 func cleanupOldLogs(dir string, days int) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		log.Printf("ERROR: Не удалось прочитать %s: %v", dir, err)
+		if globalLogger != nil {
+			globalLogger.errorLogger.Error().Msgf("Не удалось прочитать %s: %v", dir, err)
+		}
 		return
 	}
 
@@ -159,13 +124,17 @@ func cleanupOldLogs(dir string, days int) {
 		}
 		info, err := file.Info()
 		if err != nil {
-			log.Printf("ERROR: Инфо о %s: %v", file.Name(), err)
+			if globalLogger != nil {
+				globalLogger.errorLogger.Error().Msgf("Инфо о %s: %v", file.Name(), err)
+			}
 			continue
 		}
 		if info.ModTime().Before(cutoff) {
 			path := filepath.Join(dir, file.Name())
 			if err := os.Remove(path); err != nil {
-				log.Printf("ERROR: Удаление %s: %v", path, err)
+				if globalLogger != nil {
+					globalLogger.errorLogger.Error().Msgf("Удаление %s: %v", path, err)
+				}
 			}
 		}
 	}
@@ -176,11 +145,13 @@ func Close() {
 		globalLogger.mu.Lock()
 		defer globalLogger.mu.Unlock()
 
+		// Логируем ошибки закрытия в stderr
+		consoleLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 		if err := globalLogger.mainFile.Close(); err != nil {
-			log.Printf("ERROR: Закрытие mainFile: %v", err)
+			consoleLogger.Error().Msgf("Закрытие mainFile: %v", err)
 		}
 		if err := globalLogger.errorFile.Close(); err != nil {
-			log.Printf("ERROR: Закрытие errorFile: %v", err)
+			consoleLogger.Error().Msgf("Закрытие errorFile: %v", err)
 		}
 		globalLogger = nil
 	}
