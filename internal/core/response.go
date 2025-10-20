@@ -8,16 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// JSON отправляет JSON-ответ с указанным статусом HTTP (OWASP A09: Security Logging and Monitoring Failures)
-func JSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		LogError("Ошибка кодирования JSON", map[string]interface{}{"error": err.Error()})
-	}
-}
-
-// ProblemDetail определяет структуру ответа об ошибке в формате RFC 7807 (OWASP A04: Design Flaws)
+// ProblemDetail определяет структуру ответа об ошибке в формате RFC 7807 (Design Flaws)
 type ProblemDetail struct {
 	Type     string            `json:"type"`             // Тип ошибки (URI)
 	Title    string            `json:"title"`            // Название HTTP-статуса
@@ -28,7 +19,16 @@ type ProblemDetail struct {
 	Fields   map[string]string `json:"fields,omitempty"` // Поля с ошибками (для валидации)
 }
 
-// Fail отправляет ответ об ошибке в формате RFC 7807 и логирует её (OWASP A04, A09)
+// JSON отправляет JSON-ответ с указанным статусом HTTP (OWASP A09: Security Logging and Monitoring Failures)
+func JSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		LogError("Ошибка кодирования JSON", map[string]interface{}{"error": err.Error()})
+	}
+}
+
+// Fail отправляет ответ об ошибке в формате RFC 7807 и логирует её
 func Fail(w http.ResponseWriter, r *http.Request, err error) {
 	ae := From(err)
 	requestID := middleware.GetReqID(r.Context())

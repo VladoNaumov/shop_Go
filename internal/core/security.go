@@ -1,21 +1,19 @@
-package middleware
+package core
 
 // security.go
 
 import (
 	"net/http"
-
-	"myApp/internal/core"
 )
 
-// SecureHeaders добавляет заголовки безопасности, включая CSP с nonce из контекста (OWASP A03: Injection, A05: Security Misconfiguration)
+// SecureHeaders добавляет заголовки безопасности, включая CSP с nonce из контекста ( Security Misconfiguration)
 func SecureHeaders() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Получает nonce из контекста запроса
-			nonce, ok := r.Context().Value(core.CtxNonce).(string)
+			nonce, ok := r.Context().Value(CtxNonce).(string)
 			if !ok || nonce == "" {
-				core.Fail(w, r, core.Internal("Nonce не найден в контексте", nil))
+				Fail(w, r, Internal("Nonce не найден в контексте", nil))
 				return
 			}
 
@@ -52,7 +50,7 @@ func SecureHeaders() func(http.Handler) http.Handler {
 	}
 }
 
-// HSTS включает Strict-Transport-Security для продакшен-среды (OWASP A02: Cryptographic Failures)
+// HSTS включает Strict-Transport-Security для продакшен-среды (Cryptographic Failures)
 func HSTS(isProduction bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

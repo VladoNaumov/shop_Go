@@ -9,7 +9,6 @@ import (
 
 	"myApp/internal/core"
 	"myApp/internal/http/handler"
-	mw "myApp/internal/http/middleware"
 	"myApp/internal/storage"
 	"myApp/internal/view"
 
@@ -64,20 +63,20 @@ func useDatabaseMiddleware(r *chi.Mux, db *sqlx.DB) {
 
 // useBaseMiddleware — базовые middleware (nonce, логи, таймауты)
 func useBaseMiddleware(r *chi.Mux, cfg core.Config) {
-	r.Use(withNonce())                                   // Nonce для CSP (первым!)
-	r.Use(mw.TrustedProxy([]string{"127.0.0.1", "::1"})) // Доверенные прокси
-	r.Use(middleware.RequestID)                          // Уникальный ID запроса
-	r.Use(middleware.RealIP)                             // Реальный IP клиента
-	r.Use(middleware.Logger)                             // Логирование запросов
-	r.Use(middleware.Recoverer)                          // Восстановление после паники
-	r.Use(middleware.Timeout(cfg.RequestTimeout))        // Таймаут запроса
+	r.Use(withNonce())                                     // Nonce для CSP (первым!)
+	r.Use(core.TrustedProxy([]string{"127.0.0.1", "::1"})) // Доверенные прокси
+	r.Use(middleware.RequestID)                            // Уникальный ID запроса
+	r.Use(middleware.RealIP)                               // Реальный IP клиента
+	r.Use(middleware.Logger)                               // Логирование запросов
+	r.Use(middleware.Recoverer)                            // Восстановление после паники
+	r.Use(middleware.Timeout(cfg.RequestTimeout))          // Таймаут запроса
 }
 
 // useSecurityMiddleware — CSP, X-Frame-Options, HSTS (при HTTPS)
 func useSecurityMiddleware(r *chi.Mux, cfg core.Config) {
-	r.Use(mw.SecureHeaders()) // Заголовки безопасности
+	r.Use(core.SecureHeaders()) // Заголовки безопасности
 	if cfg.Secure {
-		r.Use(mw.HSTS(cfg.Env == "prod")) // HSTS только при HTTPS и в продакшене
+		r.Use(core.HSTS(cfg.Env == "prod")) // HSTS только при HTTPS и в продакшене
 	}
 }
 

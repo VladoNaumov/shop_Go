@@ -25,8 +25,10 @@ myApp/
 │  │  ├─ cfx.go                     # общий ключ для nonce
 │  │  ├─ errors.go                  # AppError, фабрики (BadRequest, Internal)
 │  │  ├─ response.go                # JSON(), Fail() (RFC7807)
-│  │  └─ logger.go                  # JSON-логи: INFO/ERROR только в файл (ротация 7 дней)
-│  │ 
+│  │  ├─ logger.go                  # JSON-логи: INFO/ERROR только в файл (ротация 7 дней)
+│  │  ├─ proxy.go                   # TrustedProxy для NGINX (X-Forwarded-For, Proto)
+│  │  └─ security.go                # CSP, XFO, nosniff, Referrer, Permissions, COOP, HSTS
+│  │
 │  ├─ storage/                      # Слой работы с MySQL
 │  │  ├─ db.go                      # sqlx.DB пул, GetDBFromContext(), Close()
 │  │  ├─ migrations.go              # Автомиграции (EnableMigrations), числовая сортировка, транзакции
@@ -34,15 +36,14 @@ myApp/
 │  │  
 │  ├─ http/
 │  │  ├─ handler/
-│  │  │  ├─ home.go                 # / (HTML)
-│  │  │  ├─ about.go                # /about (HTML)
-│  │  │  ├─ form.go                 # /form (GET/POST, валидация, PRG)
-│  │  │  ├─ catalog.go              # товары из MySQL (ListAllProducts → Render)
-│  │  │  ├─ notFound.go             # NotFound (404 HTML)
-│  │  │  └─ misc.go                 # /debug (JSON)
-│  │  └─ middleware/
-│  │     ├─ proxy.go                # TrustedProxy для NGINX (X-Forwarded-For, Proto)
-│  │     └─ security.go             # CSP, XFO, nosniff, Referrer, Permissions, COOP, HSTS
+│  │  ├─ home.go                 # / (HTML)
+│  │  ├─ about.go                # /about (HTML)
+│  │  ├─ form.go                 # /form (GET/POST, валидация, PRG)
+│  │  ├─ catalog.go              # товары из MySQL (ListAllProducts → Render)
+│  │  ├─ notFound.go             # NotFound (404 HTML)
+│  │  └─ misc.go                 # /debug (JSON)
+│  │  
+│  │     
 │  └─ view/
 │     └─ view.go                    # Централизованный рендер шаблонов (catalog.html)
 │ 

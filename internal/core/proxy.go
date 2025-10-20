@@ -1,4 +1,4 @@
-package middleware
+package core
 
 //proxy.go
 import (
@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// TrustedProxy проверяет, что запросы поступают от доверенных прокси, и устанавливает реальный IP и схему (OWASP A05: Security Misconfiguration)
+// TrustedProxy проверяет, что запросы поступают от доверенных прокси, и устанавливает реальный IP и схему ( Security Misconfiguration)
 func TrustedProxy(trustedIPs []string) func(http.Handler) http.Handler {
 	trusted := make(map[string]struct{})
 	for _, ip := range trustedIPs {
