@@ -1,5 +1,6 @@
-// internal/core/logger.go
 package core
+
+// logger.go
 
 import (
 	"fmt"
@@ -35,13 +36,13 @@ func InitDailyLog() {
 		globalLogger = nil
 	}
 
-	// Создаём директорию
+	// Создаём директорию logs
 	if err := os.MkdirAll("logs", 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка создания logs: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Ошибка создания директории logs: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Имена файлов по дате
+	// Формируем имена файлов на основе текущей даты
 	dateStr := time.Now().Format("02-01-2006")
 	mainPath := filepath.Join("logs", dateStr+".log")
 	errorPath := filepath.Join("logs", "errors-"+dateStr+".log")
@@ -49,28 +50,27 @@ func InitDailyLog() {
 	// Открываем файлы
 	mainFile, err := os.OpenFile(mainPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка открытия main.log: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Ошибка открытия основного лог-файла: %v\n", err)
 		os.Exit(1)
 	}
 
 	errorFile, err := os.OpenFile(errorPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Ошибка открытия файла ошибок: %v\n", err)
 		_ = mainFile.Close()
-		fmt.Fprintf(os.Stderr, "Ошибка открытия error.log: %v\n", err)
 		os.Exit(1)
 	}
 
-	// ← ИСПРАВЛЕНО: MultiWriter + консоль
+	//  MultiWriter + консоль
 	mainWriter := zerolog.MultiLevelWriter(os.Stdout, mainFile)
 	errorWriter := zerolog.MultiLevelWriter(os.Stderr, errorFile)
 
-	// ← ИСПРАВЛЕНО: zerolog.Logger, НЕ *zerolog.Logger
 	mainLogger := zerolog.New(mainWriter).With().Timestamp().Logger()
 	errorLogger := zerolog.New(errorWriter).With().Timestamp().Logger()
 
 	globalLogger = &Logger{
-		mainLogger:  mainLogger,  // ← Прямая передача значения
-		errorLogger: errorLogger, // ← Прямая передача значения
+		mainLogger:  mainLogger,
+		errorLogger: errorLogger,
 		mainFile:    mainFile,
 		errorFile:   errorFile,
 	}
@@ -84,7 +84,6 @@ func InitDailyLog() {
 // LogInfo — с fallback в stdout
 func LogInfo(msg string, fields map[string]interface{}) {
 	if globalLogger == nil {
-		// ← ИСПРАВЛЕНО: zerolog.New возвращает *zerolog.Logger → вызываем через переменную
 		l := zerolog.New(os.Stdout).With().Timestamp().Logger()
 		event := l.Info()
 		for k, v := range fields {
@@ -97,7 +96,7 @@ func LogInfo(msg string, fields map[string]interface{}) {
 	globalLogger.mu.Lock()
 	defer globalLogger.mu.Unlock()
 
-	event := globalLogger.mainLogger.Info() // ← mainLogger — zerolog.Logger → OK
+	event := globalLogger.mainLogger.Info()
 	for k, v := range fields {
 		event = event.Interface(k, v)
 	}
@@ -107,7 +106,6 @@ func LogInfo(msg string, fields map[string]interface{}) {
 // LogError — с fallback в stderr
 func LogError(msg string, fields map[string]interface{}) {
 	if globalLogger == nil {
-		// ← ИСПРАВЛЕНО: аналогично
 		l := zerolog.New(os.Stderr).With().Timestamp().Logger()
 		event := l.Error()
 		for k, v := range fields {
@@ -120,7 +118,7 @@ func LogError(msg string, fields map[string]interface{}) {
 	globalLogger.mu.Lock()
 	defer globalLogger.mu.Unlock()
 
-	event := globalLogger.errorLogger.Error() // ← errorLogger — zerolog.Logger → OK
+	event := globalLogger.errorLogger.Error()
 	for k, v := range fields {
 		event = event.Interface(k, v)
 	}
