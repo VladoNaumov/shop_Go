@@ -1,141 +1,181 @@
 package app
 
+// app.go
 import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"myApp/internal/http/handler"
 	"net/http"
 	"os"
+	"time"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 
 	"myApp/internal/core"
-	"myApp/internal/http/handler"
 	"myApp/internal/storage"
 	"myApp/internal/view"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/gorilla/csrf"
+	"github.com/gin-contrib/requestid"
+	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	csrf "github.com/utrack/gin-csrf"
 )
 
-// New — собирает HTTP-роутер из модулей (middleware, DB, маршруты, шаблоны)
+// New — собирает Gin-движок из модулей (middleware, DB, маршруты, шаблоны)
 func New(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) {
+	// 1) Шаблоны
 	tpl, err := initTemplates()
 	if err != nil {
 		return nil, err
 	}
 
-	r := chi.NewRouter()
+	// 2) Базовый движок
+	r := gin.New()
+	r.Use(gin.Logger(), gin.Recovery())
 
-	// Подключаем middleware в правильном порядке
-	useDatabaseMiddleware(r, db)
-	useBaseMiddleware(r, cfg)
-	useSecurityMiddleware(r, cfg)
-	useCSRF(r, cfg, csrfKey)
+	// 3) Trusted proxies
+	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+		return nil, err
+	}
+
+	// 4) Request ID
+	r.Use(requestid.New())
+
+	// 5) Таймаут
+	r.Use(RequestTimeout(cfg.RequestTimeout))
+
+	// 6) nonce + DB в контекст
+	r.Use(withNonceAndDB(db))
+
+	// 7) Security заголовки
+	r.Use(core.SecureHeaders())
+	if cfg.Secure {
+		r.Use(core.HSTS(cfg.Env == "prod"))
+	}
+
+	// 8) СЕССИИ (ОБЯЗАТЕЛЬНО до csrf)
+	store := cookie.NewStore(csrfKey) // ключ из derive32(cfg.CSRFKey) ок, длина 32 байта
+	r.Use(sessions.Sessions("mysession", store))
+
+	// 9) CSRF (использует sessions.Default(c)
+	r.Use(csrf.Middleware(csrf.Options{
+		Secret:    string(csrfKey),
+		ErrorFunc: csrfError,
+	}))
+
+	// 10) Статика
 	serveStatic(r)
+
+	// 11) Маршруты
 	registerRoutes(r, tpl)
 
+	// Возвращаем как http.Handler (совместимо с твоим main.go)
 	return r, nil
 }
-
-/* ---------- Инициализация ---------- */
 
 // initTemplates — создаёт экземпляр шаблонизатора
 func initTemplates() (*view.Templates, error) {
 	return view.New()
 }
 
-/* ---------- Database Middleware ---------- */
+// RequestTimeout — простой middleware таймаута для Gin.
+// Без внешних зависимостей; дедлайн доступен в c.Request.Context().
+func RequestTimeout(d time.Duration) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if d <= 0 {
+			c.Next()
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), d)
+		defer cancel()
 
-// useDatabaseMiddleware — добавляет *sqlx.DB в контекст каждого запроса
-func useDatabaseMiddleware(r *chi.Mux, db *sqlx.DB) {
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), storage.CtxDBKey{}, db)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	})
-}
+		c.Request = c.Request.WithContext(ctx)
 
-/* ---------- Middleware ---------- */
+		done := make(chan struct{})
+		go func() {
+			c.Next()
+			close(done)
+		}()
 
-// useBaseMiddleware — базовые middleware (nonce, логи, таймауты)
-func useBaseMiddleware(r *chi.Mux, cfg core.Config) {
-	r.Use(withNonce())
-	r.Use(core.TrustedProxy([]string{"127.0.0.1", "::1"}))
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(cfg.RequestTimeout))
-}
-
-// useSecurityMiddleware — CSP, X-Frame-Options, HSTS
-func useSecurityMiddleware(r *chi.Mux, cfg core.Config) {
-	r.Use(core.SecureHeaders())
-	if cfg.Secure {
-		r.Use(core.HSTS(cfg.Env == "prod"))
-	}
-}
-
-// useCSRF — CSRF-защита для форм (OWASP A02)
-func useCSRF(r *chi.Mux, cfg core.Config, csrfKey []byte) {
-	r.Use(csrf.Protect(
-		csrfKey,
-		csrf.Secure(cfg.Secure),             // Cookie только по HTTPS
-		csrf.SameSite(csrf.SameSiteLaxMode), // SameSite=Lax
-		csrf.HttpOnly(true),                 // Cookie HttpOnly
-		csrf.Path("/"),                      // CSRF для всех путей
-	))
-	if !cfg.Secure && cfg.Env != "prod" {
-		core.LogError("CSRF работает без HTTPS в не-продакшен среде", nil)
-	}
-}
-
-// withNonce — middleware для генерации nonce для CSP
-func withNonce() func(next http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			nonce, err := generateNonce()
-			if err != nil {
-				core.LogError("Ошибка генерации nonce", map[string]interface{}{"error": err.Error()})
-				core.Fail(w, r, core.Internal("Ошибка генерации nonce", err))
-				return
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			if !c.Writer.Written() {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+					"error":  "request timeout",
+					"status": http.StatusServiceUnavailable,
+				})
+			} else {
+				c.Abort()
 			}
-			ctx := context.WithValue(r.Context(), core.CtxNonce, nonce)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
+			return
+		}
 	}
 }
 
-/* ---------- Статика и маршруты ---------- */
+// withNonceAndDB — кладём nonce в Gin-контекст И в request.Context,
+// плюс пробрасываем *sqlx.DB в request.Context (как было в chi-версии).
+func withNonceAndDB(db *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		nonce, err := generateNonce()
+		if err != nil {
+			core.LogError("Ошибка генерации nonce", map[string]interface{}{"error": err.Error()})
+			core.FailC(c, core.Internal("Ошибка генерации nonce", err))
+			return
+		}
 
-// serveStatic — обслуживает статические файлы из web/assets
-func serveStatic(r *chi.Mux) {
+		// Сохраняем в Gin-контекст:
+		c.Set("nonce", nonce)
+
+		// И в стандартный context, чтобы старые net/http-хэндлеры тоже видели:
+		ctx := context.WithValue(c.Request.Context(), core.CtxNonce, nonce)
+		ctx = context.WithValue(ctx, storage.CtxDBKey{}, db)
+		c.Request = c.Request.WithContext(ctx)
+
+		c.Next()
+	}
+}
+
+// csrfError — единообразный ответ при ошибке CSRF
+func csrfError(c *gin.Context) {
+	core.FailC(c, core.Internal("CSRF токен недействителен или отсутствует", nil))
+}
+
+// serveStatic — статика из web/assets
+func serveStatic(r *gin.Engine) {
 	if _, err := os.Stat("web/assets"); os.IsNotExist(err) {
 		core.LogError("Директория web/assets не найдена", nil)
 		return
 	}
-	fs := http.StripPrefix("/assets/", http.FileServer(http.Dir("web/assets")))
-	r.Handle("/assets/*", fs)
+	// /assets/* -> ./web/assets
+	r.Static("/assets", "web/assets")
 }
 
-// registerRoutes — регистрирует маршруты приложения // todo: cfg ne ispolzuitsja !!!
-func registerRoutes(r *chi.Mux, tpl *view.Templates) {
-	r.Get("/", handler.Home(tpl))
-	r.Get("/catalog", handler.Catalog(tpl))
-	r.Get("/product/{id}", handler.Product(tpl))
-	r.Get("/form", handler.FormIndex(tpl))
-	r.Post("/form", handler.FormSubmit(tpl))
-	r.Get("/about", handler.About(tpl))
-	r.Get("/debug", handler.Debug)
-	r.Get("/catalog/json", handler.CatalogJSON())
-	r.NotFound(handler.NotFound(tpl))
+// registerRoutes — регистрируем маршруты приложения
+// Если твои handlers имеют сигнатуру net/http (func(w,r)), можно оборачивать через gin.WrapF/WrapH.
+func registerRoutes(r *gin.Engine, tpl *view.Templates) {
+	// Страницы (все принимают *gin.Context)
+	r.GET("/", handler.Home(tpl))
+	r.GET("/catalog", handler.Catalog(tpl))
+	r.GET("/product/:id", handler.Product(tpl))
+	r.GET("/form", handler.FormIndex(tpl))
+	r.POST("/form", handler.FormSubmit(tpl))
+	r.GET("/about", handler.About(tpl))
+
+	// Отладка (JSON)
+	r.GET("/debug", handler.Debug)
+
+	// JSON-эндпоинт каталога
+	r.GET("/catalog/json", handler.CatalogJSON())
+
+	// 404
+	r.NoRoute(handler.NotFound(tpl))
 }
 
-/* ---------- Утилиты ---------- */
-
-// generateNonce — генерирует криптографически стойкий nonce для CSP
+// generateNonce — криптографически стойкий nonce для CSP (base64)
 func generateNonce() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

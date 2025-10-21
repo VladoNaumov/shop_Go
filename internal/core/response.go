@@ -2,53 +2,48 @@ package core
 
 //response.go
 import (
-	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gin-contrib/requestid"
+	"github.com/gin-gonic/gin"
 )
 
-// ProblemDetail определяет структуру ответа об ошибке в формате RFC 7807 (Design Flaws)
+// ProblemDetail — тот же RFC7807
 type ProblemDetail struct {
-	Type     string            `json:"type"`             // Тип ошибки (URI)
-	Title    string            `json:"title"`            // Название HTTP-статуса
-	Status   int               `json:"status"`           // HTTP-статус
-	Detail   string            `json:"detail"`           // Детали ошибки
-	Instance string            `json:"instance"`         // Путь запроса
-	Code     string            `json:"code"`             // Машинный код ошибки
-	Fields   map[string]string `json:"fields,omitempty"` // Поля с ошибками (для валидации)
+	Type     string            `json:"type"`
+	Title    string            `json:"title"`
+	Status   int               `json:"status"`
+	Detail   string            `json:"detail"`
+	Instance string            `json:"instance"`
+	Code     string            `json:"code"`
+	Fields   map[string]string `json:"fields,omitempty"`
 }
 
-// JSON отправляет JSON-ответ с указанным статусом HTTP (OWASP A09: Security Logging and Monitoring Failures)
-// JSON отправляет JSON-ответ с указанным статусом HTTP.
-// OWASP A09: Security Logging and Monitoring Failures
-func JSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-
-	data, err := json.Marshal(v)
-	if err != nil {
-		LogError("Ошибка кодирования JSON", map[string]interface{}{"error": err.Error()})
-		http.Error(w, "Ошибка кодирования JSON", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(status)
-
-	if _, err := w.Write(data); err != nil {
-		LogError("Ошибка при отправке JSON-ответа", map[string]interface{}{
-			"error":  err.Error(),
-			"status": status,
-		})
-	}
+// JSON — отправка JSON через Gin (аналог вашей JSON)
+func JSON(c *gin.Context, status int, v any) {
+	// Content-Type и кодировка расставятся автоматически,
+	// но явно — безопаснее и нагляднее.
+	c.Header("Content-Type", "application/json; charset=utf-8")
+	c.JSON(status, v)
 }
 
-// Fail отправляет ответ об ошибке в формате RFC 7807 и логирует её
-func Fail(w http.ResponseWriter, r *http.Request, err error) {
+// Fail — ответ об ошибке в формате RFC7807 + логирование
+func FailC(c *gin.Context, err error) { // новое имя, чтобы не конфликтовать с вашей версией
 	ae := From(err)
-	requestID := middleware.GetReqID(r.Context())
+
+	// Пытаемся достать request_id из middleware gin-contrib/requestid.
+	reqID := requestid.Get(c)
+	if reqID == "" {
+		// Фолбэк — из заголовка, если внешний балансер/прокси его дал.
+		reqID = c.GetHeader("X-Request-ID")
+		if reqID == "" {
+			reqID = "n/a"
+		}
+	}
+
 	logFields := map[string]interface{}{
-		"request_id": requestID,
-		"path":       r.URL.Path,
+		"request_id": reqID,
+		"path":       c.FullPath(),
 		"code":       ae.Code,
 		"status":     ae.Status,
 		"message":    ae.Message,
@@ -62,9 +57,10 @@ func Fail(w http.ResponseWriter, r *http.Request, err error) {
 		Title:    http.StatusText(ae.Status),
 		Status:   ae.Status,
 		Detail:   ae.Message,
-		Instance: r.URL.Path,
+		Instance: c.Request.URL.Path, // фактический URL
 		Code:     ae.Code,
 		Fields:   ae.Fields,
 	}
-	JSON(w, ae.Status, problem)
+	JSON(c, ae.Status, problem)
+	c.Abort()
 }
