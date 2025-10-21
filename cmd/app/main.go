@@ -1,5 +1,6 @@
 package main
 
+//main.go
 import (
 	"context"
 	"crypto/sha256"
@@ -19,57 +20,56 @@ import (
 )
 
 func main() {
-	// 1. Загружаем конфигурацию и инициализируем логирование
+	// 1) Конфиг и логи
 	config := core.Load()
-
 	log.Printf("INFO: Secure=%v, Env=%s", config.Secure, config.Env)
 	core.InitDailyLog()
 
-	// 2. Инициализируем подключение к MySQL с ретраями
-	db, err := storage.NewDB() // Предполагается реализация в storage
+	// 2) БД (с ретраями внутри storage.NewDB)
+	db, err := storage.NewDB()
 	if err != nil {
 		core.LogError("Ошибка инициализации MySQL", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
 
-	// 3. Выполнить миграции
+	// 3) Миграции
 	migrations := storage.NewMigrations(db)
 	if err := migrations.RunMigrations(); err != nil {
 		core.LogError("Ошибка выполнения миграций", map[string]interface{}{"error": err.Error()})
 		os.Exit(1)
 	}
 
-	// 4. Создаём контекст для фоновых задач (ротация логов)
+	// 4) Контекст для фоновых задач (ротация логов)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 5. Запускаем ежедневную ротацию логов
+	// 5) Ежедневная ротация логов
 	startLogRotation(ctx)
 
-	// 6. Инициализируем HTTP-обработчик с CSRF и DB
+	// 6) Инициализируем Gin-обработчик с CSRF и DB
 	handler := initHandler(config, db)
 
-	// 7. Создаём HTTP-сервер с таймаутами (OWASP A05)
+	// 7) HTTP-сервер с таймаутами (OWASP A05)
 	srv := newHTTPServer(config, handler)
 
-	// 8. Настраиваем перехват сигналов SIGINT/SIGTERM
+	// 8) Перехват сигналов
 	sigs, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// 9. Запускаем HTTP-сервер
+	// 9) Запуск сервера
 	runServer(srv, config)
 
-	// 10. Ожидаем сигнал завершения
+	// 10) Ожидаем сигнал завершения
 	waitShutdown(sigs, srv, config)
 
-	// 11. Закрываем DB и логи последовательно
+	// 11) Закрытие ресурсов
 	if cerr := storage.Close(db); cerr != nil {
 		core.LogError("Ошибка закрытия MySQL", map[string]interface{}{"error": cerr.Error()})
 	}
-	core.Close() // Закрываем логгер последним
+	core.Close()
 }
 
-// startLogRotation запускает ротацию логов раз в сутки
+// startLogRotation — ротация раз в сутки
 func startLogRotation(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
@@ -85,7 +85,7 @@ func startLogRotation(ctx context.Context) {
 	}()
 }
 
-// initHandler создаёт обработчик приложения с CSRF-защитой и DB
+// initHandler — сборка приложения (получаем http.Handler = *gin.Engine)
 func initHandler(cfg core.Config, db *sqlx.DB) http.Handler {
 	handler, err := app.New(cfg, db, derive32(cfg.CSRFKey))
 	if err != nil {
@@ -95,7 +95,7 @@ func initHandler(cfg core.Config, db *sqlx.DB) http.Handler {
 	return handler
 }
 
-// newHTTPServer создаёт HTTP-сервер с таймаутами (OWASP A05)
+// newHTTPServer — задаём таймауты сервера
 func newHTTPServer(cfg core.Config, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -107,14 +107,14 @@ func newHTTPServer(cfg core.Config, h http.Handler) *http.Server {
 	}
 }
 
-// gracefulShutdown выполняет корректное завершение HTTP-сервера
+// gracefulShutdown — корректное завершение
 func gracefulShutdown(srv *http.Server, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return srv.Shutdown(ctx)
 }
 
-// runServer запускает HTTP-сервер в горутине
+// runServer — запуск (ListenAndServe) в горутине
 func runServer(srv *http.Server, cfg core.Config) {
 	go func() {
 		log.Printf("INFO: http: сервер запущен, addr=%s, env=%s, app=%s", cfg.Addr, cfg.Env, cfg.AppName)
@@ -125,7 +125,7 @@ func runServer(srv *http.Server, cfg core.Config) {
 	}()
 }
 
-// waitShutdown ожидает сигнал завершения и выполняет shutdown
+// waitShutdown — ожидание сигналов и shutdown
 func waitShutdown(sigs context.Context, srv *http.Server, cfg core.Config) {
 	<-sigs.Done()
 	log.Println("INFO: http: начат процесс завершения")
@@ -136,7 +136,7 @@ func waitShutdown(sigs context.Context, srv *http.Server, cfg core.Config) {
 	}
 }
 
-// derive32 генерирует 32-байтовый ключ CSRF из секрета (OWASP A02)
+// derive32 — 32-байтовый ключ CSRF из секрета (OWASP A02)
 func derive32(secret string) []byte {
 	sum := sha256.Sum256([]byte(secret))
 	return sum[:]

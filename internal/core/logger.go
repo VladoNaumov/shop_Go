@@ -1,5 +1,6 @@
 package core
 
+//logger.go
 import (
 	"fmt"
 	"os"
@@ -36,7 +37,7 @@ func InitDailyLog() {
 
 	// Создаём директорию logs
 	if err := os.MkdirAll("logs", 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка создания директории logs: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Ошибка создания директории logs: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -48,13 +49,13 @@ func InitDailyLog() {
 	// Открываем файлы
 	mainFile, err := os.OpenFile(mainPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка открытия основного лог-файла: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Ошибка открытия основного лог-файла: %v\n", err)
 		os.Exit(1)
 	}
 
 	errorFile, err := os.OpenFile(errorPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка открытия файла ошибок: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Ошибка открытия файла ошибок: %v\n", err)
 		_ = mainFile.Close()
 		os.Exit(1)
 	}
