@@ -2,51 +2,32 @@ package core
 
 // security.go
 import (
-	"github.com/gin-contrib/secure"
 	"github.com/gin-gonic/gin"
 )
 
-// SecureHeaders — Gin-middleware: собирает CSP с nonce и проставляет безопасность.
-// В gin-contrib/secure нет динамического поля для CSP -> ставим CSP вручную.
+// SecureHeaders — middleware: CSP с nonce + безопасные заголовки
 func SecureHeaders() gin.HandlerFunc {
-	sec := secure.New(secure.Config{
-		FrameDeny:          true,
-		ContentTypeNosniff: true,
-		BrowserXssFilter:   true,
-		ReferrerPolicy:     "strict-origin-when-cross-origin",
-	})
-
 	return func(c *gin.Context) {
-		// Достаём nonce либо из Gin-контекста (рекомендуется),
-		nonce := c.GetString("nonce")
-		if nonce == "" {
-			if v := c.Request.Context().Value(CtxNonce); v != nil {
-				if s, ok := v.(string); ok {
-					nonce = s
-				}
-			}
-		}
-		if nonce == "" {
-			FailC(c, Internal("Nonce не найден в контексте", nil))
+		nonce, ok := c.Request.Context().Value(CtxNonce).(string)
+		if !ok || nonce == "" {
+			FailC(c, Internal("Nonce не найден", nil))
 			return
 		}
 
-		sec(c)
-
-		// Динамический CSP с nonce:
 		csp := "default-src 'self'; " +
-			"img-src 'self' storage:; " +
-			"style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline' 'nonce-" + nonce + "'; " +
+			"img-src 'self' data:; " +
+			"style-src 'self' https://cdn.jsdelivr.net 'nonce-" + nonce + "'; " +
 			"script-src 'self' https://cdn.jsdelivr.net 'nonce-" + nonce + "'; " +
-			"font-src 'self' https://cdn.jsdelivr.net storage:; " +
-			"connect-src 'self' https://cdn.jsdelivr.net; " +
+			"font-src 'self' https://cdn.jsdelivr.net data:; " +
+			"connect-src 'self' https://cdn.jsdelivr.net; " + // ← РАЗРЕШЕНО: .map файлы
 			"form-action 'self'; " +
 			"frame-ancestors 'none'; " +
 			"base-uri 'self'"
 
 		c.Writer.Header().Set("Content-Security-Policy", csp)
-
-		// В gin-contrib/secure НЕТ поля PermissionsPolicy -> ставим вручную:
+		c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
+		c.Writer.Header().Set("X-Frame-Options", "DENY")
+		c.Writer.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Writer.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
 
 		c.Next()
@@ -55,9 +36,12 @@ func SecureHeaders() gin.HandlerFunc {
 
 // HSTS — включает Strict-Transport-Security
 func HSTS(isProduction bool) gin.HandlerFunc {
-	return secure.New(secure.Config{
-		STSSeconds:           31536000,
-		STSIncludeSubdomains: true,
-		IsDevelopment:        !isProduction,
-	})
+	return func(c *gin.Context) {
+		if !isProduction {
+			c.Next()
+			return
+		}
+		c.Writer.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Next()
+	}
 }

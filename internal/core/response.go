@@ -1,6 +1,6 @@
 package core
 
-//response.go
+// response.go
 import (
 	"net/http"
 
@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ProblemDetail — тот же RFC7807
+// ProblemDetail — RFC 7807
 type ProblemDetail struct {
 	Type     string            `json:"type"`
 	Title    string            `json:"title"`
@@ -19,29 +19,24 @@ type ProblemDetail struct {
 	Fields   map[string]string `json:"fields,omitempty"`
 }
 
-// JSON — отправка JSON через Gin (аналог вашей JSON)
+// JSON — просто отправка
 func JSON(c *gin.Context, status int, v any) {
-	// Content-Type и кодировка расставятся автоматически,
-	// но явно — безопаснее и нагляднее.
-	c.Header("Content-Type", "application/json; charset=utf-8")
 	c.JSON(status, v)
 }
 
-// Fail — ответ об ошибке в формате RFC7807 + логирование
-func FailC(c *gin.Context, err error) { // новое имя, чтобы не конфликтовать с вашей версией
+// FailC — ошибка с логированием
+func FailC(c *gin.Context, err error) {
 	ae := From(err)
 
-	// Пытаемся достать request_id из middleware gin-contrib/requestid.
 	reqID := requestid.Get(c)
 	if reqID == "" {
-		// Фолбэк — из заголовка, если внешний балансер/прокси его дал.
 		reqID = c.GetHeader("X-Request-ID")
 		if reqID == "" {
 			reqID = "n/a"
 		}
 	}
 
-	logFields := map[string]interface{}{
+	LogError("Ошибка запроса", map[string]interface{}{
 		"request_id": reqID,
 		"path":       c.FullPath(),
 		"code":       ae.Code,
@@ -49,18 +44,18 @@ func FailC(c *gin.Context, err error) { // новое имя, чтобы не к
 		"message":    ae.Message,
 		"fields":     ae.Fields,
 		"error":      ae.Err,
-	}
-	LogError("Ошибка обработки запроса", logFields)
+	})
 
 	problem := ProblemDetail{
 		Type:     "/errors/" + ae.Code,
 		Title:    http.StatusText(ae.Status),
 		Status:   ae.Status,
 		Detail:   ae.Message,
-		Instance: c.Request.URL.Path, // фактический URL
+		Instance: "/errors/" + ae.Code, // ← ИСПРАВЛЕНО: URI ошибки, не путь запроса
 		Code:     ae.Code,
 		Fields:   ae.Fields,
 	}
+
 	JSON(c, ae.Status, problem)
 	c.Abort()
 }

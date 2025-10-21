@@ -4,7 +4,6 @@ go 1.25.1
 
 require (
 	github.com/gin-contrib/requestid v1.0.5
-	github.com/gin-contrib/secure v1.1.2
 	github.com/gin-contrib/sessions v1.0.4
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-playground/validator/v10 v10.28.0
