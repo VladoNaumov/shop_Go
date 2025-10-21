@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"myApp/internal/core"
@@ -162,12 +163,24 @@ func csrfError(c *gin.Context) {
 	core.FailC(c, core.Internal("CSRF invalid", nil))
 }
 
-// serveStatic — раздача файлов из web/assets на /assets.
+// serveStatic — раздача файлов из web/assets на /assets с отключённым кэшем.
 func serveStatic(r *gin.Engine) {
 	if _, err := os.Stat("web/assets"); os.IsNotExist(err) {
 		core.LogError("web/assets missing", nil)
 		return
 	}
+
+	// Отключен  кэш для всех статических файлов
+	r.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/assets/") {
+			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+			c.Header("Pragma", "no-cache")
+			c.Header("Expires", "0")
+		}
+		c.Next()
+	}) //TODO: no-cache, no-store, must-revalidate
+
+	// Раздача статики
 	r.Static("/assets", "web/assets")
 }
 
@@ -183,17 +196,13 @@ func registerRoutes(r *gin.Engine, tpl *view.Templates) {
 	r.GET("/catalog/json", handler.CatalogJSON())
 	r.NoRoute(handler.NotFound(tpl))
 
-	// Тихо гасим запросы от Chrome DevTools
-	r.GET("/.well-known/appspecific/com.chrome.devtools.json", func(c *gin.Context) {
-		c.Status(http.StatusNoContent) // 204
-	})
 }
 
 // generateNonce — создаёт 16 байт криптографически стойкой случайности и кодирует в Base64.
 // Ошибку ОБЯЗАТЕЛЬНО проверяем (golangci-lint errcheck).
 func generateNonce() (string, error) {
 	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil { // ← обработка ошибки обязательна
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(b), nil
