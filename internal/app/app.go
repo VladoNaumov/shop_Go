@@ -56,17 +56,10 @@ func New(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) {
 	r.Use(withNonceAndDB(db))
 
 	// Security заголовки (X-Frame-Options, X-Content-Type-Options и пр.)
-	// ВАЖНО: Убедись, что core.SecureHeaders() НЕ добавляет Content-Security-Policy.
-	// CSP ниже выставляется отдельным middleware, чтобы подставить nonce.
 	r.Use(core.SecureHeaders())
 
-	// Строгая CSP С НОНСОМ. Должна идти ПОСЛЕ withNonceAndDB.
-	r.Use(CSP())
-
-	// HSTS только для HTTPS; в продакшене можно включить preload (внутри core.HSTS)
-	if cfg.Secure {
-		r.Use(core.HSTS(cfg.Env == "prod"))
-	}
+	//  CSP
+	r.Use(core.CSPBasic())
 
 	// Безопасные cookie-сессии (HttpOnly, SameSite, Secure=prod)
 	store := cookie.NewStore(csrfKey)
@@ -126,34 +119,6 @@ func withNonceAndDB(db *sqlx.DB) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), core.CtxNonce, nonce)
 		ctx = context.WithValue(ctx, storage.CtxDBKey{}, db)
 		c.Request = c.Request.WithContext(ctx)
-		c.Next()
-	}
-}
-
-// CSP — выставляет жёсткую CSP с тем самым nonce из контекста.
-// ВАЖНО: nonce действует ДЛЯ <style nonce="..."> и <script nonce="...">,
-// НО НЕ для атрибутов style="...". Атрибуты будут блокироваться, пока не уберёшь их.
-func CSP() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		nonce, _ := c.Request.Context().Value(core.CtxNonce).(string)
-
-		// Собери политику под свои нужды. Ниже — безопасный базовый вариант.
-		// Если используешь сторонние CDN — явно перечисляй их.
-		c.Header("Content-Security-Policy",
-			"default-src 'self'; "+
-				"base-uri 'self'; "+
-				"object-src 'none'; "+
-				"frame-ancestors 'none'; "+
-				// Стили: только свои, jsdelivr и инлайн <style nonce="...">.
-				// Атрибуты style="" всё равно будут ЗАПРЕЩЕНЫ.
-				"style-src 'self' https://cdn.jsdelivr.net 'nonce-"+nonce+"'; "+
-				// Скрипты: свои, jsdelivr и инлайн <script nonce="...">.
-				"script-src 'self' https://cdn.jsdelivr.net 'nonce-"+nonce+"'; "+
-				// Картинки: свои, data: (иконки/инлайн PNG), и, при необходимости, CDN.
-				"img-src 'self' data: https://cdn.jsdelivr.net; "+
-				// Шрифты с CDN (если нужны)
-				"font-src 'self' https://cdn.jsdelivr.net; ")
-
 		c.Next()
 	}
 }
