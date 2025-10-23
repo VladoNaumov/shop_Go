@@ -15,7 +15,7 @@ func Home(tpl *view.Templates) gin.HandlerFunc {
 		// Пример данных для шаблона (можешь убрать/заменить)
 		data := map[string]any{
 			"Welcome": "Добро пожаловать в магазин!",
-			"Lang":    "ru",
+			"Lang":    "fi",
 		}
 
 		// Рендерим шаблон "home"
