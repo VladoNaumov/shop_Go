@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+
 	"net/http"
 	"os"
 	"strings"
@@ -21,6 +22,8 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+
 	"github.com/jmoiron/sqlx"
 	csrf "github.com/utrack/gin-csrf"
 )
@@ -88,7 +91,7 @@ func New(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) {
 	serveStatic(r, cfg.Env)
 
 	// Роуты
-	registerRoutes(r, tpl)
+	registerRoutes(r, tpl, cfg, db)
 
 	return r, nil
 }
@@ -173,7 +176,7 @@ func serveStatic(r *gin.Engine, env string) {
 }
 
 // registerRoutes — Регистрация всех маршрутов приложения.
-func registerRoutes(r *gin.Engine, tpl *view.Templates) {
+func registerRoutes(r *gin.Engine, tpl *view.Templates, cfg core.Config, db *sqlx.DB) {
 	// Группы роутов и прочие обработчики
 	r.GET("/", handler.Home(tpl))
 	r.GET("/catalog", handler.Catalog(tpl))
@@ -183,6 +186,21 @@ func registerRoutes(r *gin.Engine, tpl *view.Templates) {
 	r.GET("/about", handler.About(tpl))
 	r.GET("/debug", handler.Debug)
 	r.GET("/catalog/json", handler.CatalogJSON())
+
+	// Роут для логина
+	r.POST("/login", core.LoginHandler(cfg, db))
+
+	// Защищенные роуты с JWT
+	protected := r.Group("/api")
+	protected.Use(core.JWTMiddleware(cfg))
+	{
+		protected.GET("/user", func(c *gin.Context) {
+			claims := c.Request.Context().Value(core.CtxUser).(jwt.MapClaims)
+			c.JSON(http.StatusOK, gin.H{
+				"user": claims["sub"],
+			})
+		})
+	}
 
 	// Обработчик 404
 	r.NoRoute(handler.NotFound(tpl))
