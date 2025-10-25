@@ -28,6 +28,12 @@ type Config struct {
 	WriteTimeout      time.Duration // Таймаут записи HTTP-ответа
 	IdleTimeout       time.Duration // Таймаут простоя соединения
 	RequestTimeout    time.Duration // Общий таймаут на обработку запроса в middleware
+
+	// JWT — Параметры для JSON Web Tokens
+	JWT struct {
+		Secret     string        // Секретный ключ для подписи JWT (минимум 32 байта)
+		Expiration time.Duration // Время жизни токена (например, 24h)
+	}
 }
 
 // fatalConfigError — централизованно логирует ошибку конфигурации и завершает работу.
@@ -61,6 +67,14 @@ func Load() Config {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		RequestTimeout:    15 * time.Second,
+
+		JWT: struct {
+			Secret     string
+			Expiration time.Duration
+		}{
+			Secret:     generateRandomKey(), // Криптостойкий дефолт (32 байта)
+			Expiration: 24 * time.Hour,      // Дефолт: 24 часа
+		},
 	}
 
 	// Валидация для продакшена — ключевой этап безопасности
@@ -95,6 +109,15 @@ func Load() Config {
 				map[string]interface{}{"keys_missing": []string{"TLS_CERT_FILE", "TLS_KEY_FILE"}},
 			)
 		}
+
+		// 5. Проверка силы CSRF-ключа (минимум 32 байта)
+		if !isKeyStrong(cfg.CSRFKey, 32) {
+			fatalConfigError(
+				"Недостаточная длина CSRF_KEY в продакшене. Требуется минимум 32 байта.",
+				map[string]interface{}{"key": "CSRF_KEY", "provided_length": len(cfg.CSRFKey)},
+			)
+		}
+
 	}
 
 	return cfg

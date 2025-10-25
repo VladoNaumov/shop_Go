@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jmoiron/sqlx"
 	csrf "github.com/utrack/gin-csrf"
 )
@@ -88,7 +90,7 @@ func New(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) {
 	serveStatic(r, cfg.Env)
 
 	// Роуты
-	registerRoutes(r, tpl)
+	registerRoutes(r, tpl, cfg, db)
 
 	return r, nil
 }
@@ -172,8 +174,86 @@ func serveStatic(r *gin.Engine, env string) {
 	r.Static("/assets", "web/assets")
 }
 
+// JWTMiddleware — Проверяет JWT в заголовке Authorization (Bearer).
+func JWTMiddleware(cfg core.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			core.FailC(c, core.Unauthorized("Authorization header missing"))
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			core.FailC(c, core.Unauthorized("Invalid Authorization header format"))
+			return
+		}
+
+		token, err := jwt.Parse(parts[1], func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				// TODO: по возможности реализовать через logger.go
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(cfg.JWT.Secret), nil
+		})
+
+		if err != nil || !token.Valid {
+			core.FailC(c, core.Unauthorized("Invalid or expired JWT"))
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			core.FailC(c, core.Internal("Failed to parse JWT claims", nil))
+			return
+		}
+		ctx := context.WithValue(c.Request.Context(), core.CtxUser, claims)
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}
+}
+
+// LoginRequest — Структура для валидации тела запроса на логин.
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+// LoginHandler — Обработчик логина, выдает JWT.
+func LoginHandler(cfg core.Config, db *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req LoginRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			core.FailC(c, core.BadRequest("Invalid request body", err))
+			return
+		}
+
+		// TODO: Заглушка: замените на проверку в БД
+		if req.Username != "test" || req.Password != "test123" {
+			core.FailC(c, core.Unauthorized("Invalid credentials"))
+			return
+		}
+
+		claims := jwt.MapClaims{
+			"sub": req.Username,
+			"exp": time.Now().Add(cfg.JWT.Expiration).Unix(),
+			"iat": time.Now().Unix(),
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		tokenString, err := token.SignedString([]byte(cfg.JWT.Secret))
+		if err != nil {
+			core.FailC(c, core.Internal("Failed to generate JWT", err))
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"token": tokenString,
+		})
+	}
+}
+
 // registerRoutes — Регистрация всех маршрутов приложения.
-func registerRoutes(r *gin.Engine, tpl *view.Templates) {
+func registerRoutes(r *gin.Engine, tpl *view.Templates, cfg core.Config, db *sqlx.DB) {
 	// Группы роутов и прочие обработчики
 	r.GET("/", handler.Home(tpl))
 	r.GET("/catalog", handler.Catalog(tpl))
@@ -183,6 +263,21 @@ func registerRoutes(r *gin.Engine, tpl *view.Templates) {
 	r.GET("/about", handler.About(tpl))
 	r.GET("/debug", handler.Debug)
 	r.GET("/catalog/json", handler.CatalogJSON())
+
+	// Роут для логина
+	r.POST("/login", LoginHandler(cfg, db))
+
+	// Защищенные роуты с JWT
+	protected := r.Group("/api")
+	protected.Use(JWTMiddleware(cfg))
+	{
+		protected.GET("/user", func(c *gin.Context) {
+			claims := c.Request.Context().Value(core.CtxUser).(jwt.MapClaims)
+			c.JSON(http.StatusOK, gin.H{
+				"user": claims["sub"],
+			})
+		})
+	}
 
 	// Обработчик 404
 	r.NoRoute(handler.NotFound(tpl))
