@@ -1,5 +1,6 @@
 package core
 
+// auth.go - Authorization (Bearer)
 import (
 	"context"
 	"fmt"
