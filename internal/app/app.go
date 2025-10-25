@@ -191,7 +191,12 @@ func JWTMiddleware(cfg core.Config) gin.HandlerFunc {
 
 		token, err := jwt.Parse(parts[1], func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				// TODO: по возможности реализовать через logger.go
+
+				core.LogError("Unexpected signing method in JWT", map[string]interface{}{
+					"algorithm": token.Header["alg"],
+					"jwt_token": parts[1], // Логируем сам токен для отладки, если нужно
+					"source":    "JWTMiddleware",
+				})
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
 			return []byte(cfg.JWT.Secret), nil
@@ -220,34 +225,68 @@ type LoginRequest struct {
 }
 
 // LoginHandler — Обработчик логина, выдает JWT.
+// Принимает конфигурацию (cfg) и подключение к БД (db) и возвращает обработчик gin.
 func LoginHandler(cfg core.Config, db *sqlx.DB) gin.HandlerFunc {
+	// Возвращаем анонимную функцию, которая будет обработчиком Gin.
 	return func(c *gin.Context) {
+		// Объявляем структуру для хранения данных запроса (логин/пароль).
 		var req LoginRequest
+
+		// 1. ПАРСИНГ И ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
+		// Пытаемся привязать JSON-тело запроса к структуре `req`.
 		if err := c.ShouldBindJSON(&req); err != nil {
+			// Если произошла ошибка парсинга (например, неверный JSON формат) или
+			// валидации (если в LoginRequest есть теги "binding"),
+			// отправляем клиенту ошибку 400 Bad Request.
 			core.FailC(c, core.BadRequest("Invalid request body", err))
 			return
 		}
 
-		// TODO: Заглушка: замените на проверку в БД
+		// 2. АУТЕНТИФИКАЦИЯ ПОЛЬЗОВАТЕЛЯ
+		// TODO: Заглушка: замените на проверку в БД.
+		// В текущей реализации: жестко закодированная проверка логина/пароля.
+		// В реальном приложении здесь должен быть запрос к БД,
+		// сравнение хеша пароля, и получение данных пользователя.
 		if req.Username != "test" || req.Password != "test123" {
+			// Если учетные данные не совпадают, отправляем ошибку 401 Unauthorized.
 			core.FailC(c, core.Unauthorized("Invalid credentials"))
 			return
 		}
 
+		// 3. СОЗДАНИЕ PAYLOAD (CLAIMS) ДЛЯ JWT
+		// Создаем набор утверждений (claims), которые будут храниться в токене.
 		claims := jwt.MapClaims{
+			// "sub" (Subject): Идентификатор пользователя (здесь — имя).
+			// Это основное "что" идентифицирует пользователя.
 			"sub": req.Username,
+
+			// "exp" (Expiration Time): Время истечения срока действия токена (Unix-время).
+			// Токен будет недействителен после этого времени.
 			"exp": time.Now().Add(cfg.JWT.Expiration).Unix(),
+
+			// "iat" (Issued At): Время выдачи токена (Unix-время).
 			"iat": time.Now().Unix(),
 		}
+
+		// 4. ПОДПИСАНИЕ ТОКЕНА
+		// Создаем новый токен, используя выбранный алгоритм (HS256) и утверждения (claims).
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+		// Подписываем токен с помощью секретного ключа (`cfg.JWT.Secret`).
+		// Результатом является строка — сам JWT в формате header.payload.signature.
 		tokenString, err := token.SignedString([]byte(cfg.JWT.Secret))
+
 		if err != nil {
+			// Если не удалось подписать токен (редко, обычно проблема конфигурации),
+			// отправляем ошибку 500 Internal Server Error.
 			core.FailC(c, core.Internal("Failed to generate JWT", err))
 			return
 		}
 
+		// 5. ОТПРАВКА ОТВЕТА
+		// Отправляем успешный ответ (HTTP 200 OK), содержащий сгенерированный JWT.
 		c.JSON(http.StatusOK, gin.H{
-			"token": tokenString,
+			"token": tokenString, // Клиент будет использовать этот токен для доступа к защищенным маршрутам.
 		})
 	}
 }
