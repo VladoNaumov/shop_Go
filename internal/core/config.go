@@ -1,6 +1,7 @@
 package core
 
-// config.go — Загрузка и валидация настроек приложения из переменных окружения.
+// config.go — Локальная конфигурация приложения без ENV.
+// Конфигурация задаётся прямо в коде (структурой), с безопасными дефолтами и валидацией.
 
 import (
 	"crypto/rand"
@@ -27,6 +28,12 @@ type Config struct {
 	WriteTimeout      time.Duration // Таймаут записи HTTP-ответа
 	IdleTimeout       time.Duration // Таймаут простоя соединения
 	RequestTimeout    time.Duration // Общий таймаут на обработку запроса в middleware
+
+	// JWT — Параметры для JSON Web Tokens
+	JWT struct {
+		Secret     string        // Секретный ключ для подписи JWT (минимум 32 байта)
+		Expiration time.Duration // Время жизни токена (например, 24h)
+	}
 }
 
 // fatalConfigError — централизованно логирует ошибку конфигурации и завершает работу.
@@ -42,26 +49,35 @@ func fatalConfigError(msg string, fields map[string]interface{}) {
 	os.Exit(1)
 }
 
-// Load загружает конфигурацию из ENV с дефолтами и проводит валидацию для Prod.
+// Load — создаёт и валидирует конфигурацию без чтения ENV.
+// Значения задаются прямо в коде.
 func Load() Config {
 	cfg := Config{
-		AppName:           getEnv("APP_NAME", "myApp"),
-		Addr:              getEnv("HTTP_ADDR", ":8080"),
-		Env:               getEnv("APP_ENV", "dev"),
-		CSRFKey:           getEnv("CSRF_KEY", generateRandomKey()), // Криптостойкий дефолт
-		Secure:            getEnvBool("SECURE", false),
-		TLSOffloaded:      getEnvBool("TLS_OFFLOADED", false), // если true — TLS у nginx
-		CertFile:          getEnv("TLS_CERT_FILE", ""),
-		KeyFile:           getEnv("TLS_KEY_FILE", ""),
-		ShutdownTimeout:   getEnvDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
-		ReadHeaderTimeout: getEnvDuration("READ_HEADER_TIMEOUT", 5*time.Second),
-		ReadTimeout:       getEnvDuration("READ_TIMEOUT", 10*time.Second),
-		WriteTimeout:      getEnvDuration("WRITE_TIMEOUT", 30*time.Second),
-		IdleTimeout:       getEnvDuration("IDLE_TIMEOUT", 60*time.Second),
-		RequestTimeout:    getEnvDuration("REQUEST_TIMEOUT", 15*time.Second),
+		AppName:           "myApp",
+		Addr:              ":8080",
+		Env:               "dev",
+		CSRFKey:           generateRandomKey(), // безопасный дефолт
+		Secure:            false,
+		TLSOffloaded:      true,
+		CertFile:          "",
+		KeyFile:           "",
+		ShutdownTimeout:   10 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		RequestTimeout:    15 * time.Second,
+
+		JWT: struct {
+			Secret     string
+			Expiration time.Duration
+		}{
+			Secret:     generateRandomKey(), // Криптостойкий дефолт (32 байта)
+			Expiration: 24 * time.Hour,      // Дефолт: 24 часа
+		},
 	}
 
-	// Валидация для продакшена — ключевой этап безопасности и отказоустойчивости
+	// Валидация для продакшена — ключевой этап безопасности
 	if strings.ToLower(cfg.Env) == "prod" {
 
 		// 1. Проверка силы CSRF-ключа (минимум 32 байта)
@@ -81,65 +97,33 @@ func Load() Config {
 		// Гарантируем, что приложение ставит безопасные куки и HSTS (если он включен).
 		if !cfg.Secure {
 			fatalConfigError(
-				"SECURE должен быть true в продакшене. Приложение должно работать в HTTPS-режиме (даже при offload на прокси).",
-				map[string]interface{}{"key": "SECURE", "tip": "Установите SECURE=true"},
+				"SECURE должен быть true в продакшене. Приложение должно работать в HTTPS-режиме.",
+				map[string]interface{}{"key": "SECURE"},
 			)
 		}
 
-		// 4. Проверка файлов TLS (если TLS не offloaded)
+		// 4. Проверка TLS файлов (если TLS не offloaded)
 		if !cfg.TLSOffloaded && (cfg.CertFile == "" || cfg.KeyFile == "") {
 			fatalConfigError(
-				"TLS_CERT_FILE / TLS_KEY_FILE отсутствуют, а TLS не offloaded. Требуются файлы сертификата/ключа.",
+				"TLS_CERT_FILE / TLS_KEY_FILE отсутствуют, а TLS не offloaded. Требуются файлы сертификата и ключа.",
 				map[string]interface{}{"keys_missing": []string{"TLS_CERT_FILE", "TLS_KEY_FILE"}},
 			)
 		}
+
+		// 5. Проверка силы CSRF-ключа (минимум 32 байта)
+		if !isKeyStrong(cfg.CSRFKey, 32) {
+			fatalConfigError(
+				"Недостаточная длина CSRF_KEY в продакшене. Требуется минимум 32 байта.",
+				map[string]interface{}{"key": "CSRF_KEY", "provided_length": len(cfg.CSRFKey)},
+			)
+		}
+
 	}
 
 	return cfg
 }
 
-// getEnv — Извлекает строку из ENV, убирает пробелы, или возвращает дефолт.
-func getEnv(key, def string) string {
-	if val := strings.TrimSpace(os.Getenv(key)); val != "" {
-		return val
-	}
-	return def
-}
-
-// getEnvBool — Извлекает bool из ENV. Поддерживает "true", "1", "yes", "on".
-func getEnvBool(key string, def bool) bool {
-	val := strings.TrimSpace(os.Getenv(key))
-	if val == "" {
-		return def
-	}
-	v := strings.ToLower(val)
-	return v == "true" || v == "1" || v == "yes" || v == "on"
-}
-
-// getEnvDuration — Извлекает time.Duration из ENV. Поддерживает форматы Go ("30s") или просто число (интерпретируется как секунды).
-func getEnvDuration(key string, def time.Duration) time.Duration {
-	val := strings.TrimSpace(os.Getenv(key))
-	if val == "" {
-		return def
-	}
-
-	// 1. Попытка распарсить как стандартную длительность Go ("10s", "1m")
-	if d, err := time.ParseDuration(val); err == nil {
-		return d
-	}
-
-	// 2. Если не стандарт, пытаемся интерпретировать как число секунд
-	if secs, err := time.ParseDuration(val + "s"); err == nil {
-		return secs
-	}
-
-	// 3. Ошибка формата, возвращаем дефолт и логируем
-	LogError("Неверный формат длительности. Используется дефолт.", map[string]interface{}{"key": key, "value": val, "default": def.String()})
-	return def
-}
-
-// generateRandomKey — Генерирует криптостойкий ключ (32 байта) и кодирует его в Base64.
-// Используется как дефолтное значение для CSRFKey.
+// generateRandomKey — Генерирует криптостойкий ключ (32 байта) и кодирует в Base64.
 func generateRandomKey() string {
 	b := make([]byte, 32)
 	// Читаем криптостойкие случайные байты
@@ -157,12 +141,10 @@ func isKeyStrong(key string, minBytes int) bool {
 	if key == "" {
 		return false
 	}
-
 	// Попытка декодировать как Base64 (если это ключ, сгенерированный нашей функцией)
 	if decoded, err := base64.StdEncoding.DecodeString(key); err == nil {
 		return len(decoded) >= minBytes
 	}
-
 	// Иначе, проверяем raw-байтовую длину строки
 	return len([]byte(key)) >= minBytes
 }

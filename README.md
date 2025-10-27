@@ -27,7 +27,8 @@ myApp/
 │  │  └─ app.go               # Gin router, middleware, статика, маршруты
 │  │
 │  ├─ core/
-│  │  ├─ config.go            # ENV-конфиг, Secure-режим, таймауты
+│  │  ├─ auth.go              # Authorization (Bearer)
+│  │  ├─ config.go            # Локальная конфигурация приложения без ENV
 │  │  ├─ context.go           # CtxNonce, контекстные ключи
 │  │  ├─ errors.go            # AppError (RFC 7807)
 │  │  ├─ response.go          # JSON(), Fail() — единый JSON-ответ

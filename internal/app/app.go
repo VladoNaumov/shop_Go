@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+
 	"net/http"
 	"os"
 	"strings"
@@ -21,6 +22,8 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+
 	"github.com/jmoiron/sqlx"
 	csrf "github.com/utrack/gin-csrf"
 )
@@ -78,23 +81,57 @@ func New(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) {
 	})
 	r.Use(sessions.Sessions("mysession", store))
 
-	// CSRF защита форм. Использует сессию.
-	r.Use(csrf.Middleware(csrf.Options{
-		Secret:    string(csrfKey),
-		ErrorFunc: csrfError, // Использует 403 Forbidden через core.FailC
-	}))
+	// Устанавливаем csrfSecret в контекст для роутов, где нужен CSRF
+	r.Use(func(c *gin.Context) {
+		c.Set("csrfSecret", string(csrfKey))
+		c.Next()
+	})
 
 	// Статика (с условным отключением кэша в Dev-режиме)
 	serveStatic(r, cfg.Env)
 
-	// Роуты
-	registerRoutes(r, tpl)
+	// Публичные роуты без CSRF
+	public := r.Group("/")
+	{
+		public.POST("/login", core.LoginHandler(cfg, db))
+		public.GET("/catalog", handler.Catalog(tpl))
+		public.GET("/product/:id", handler.Product(tpl))
+		public.GET("/about", handler.About(tpl))
+		public.GET("/catalog/json", handler.CatalogJSON())
+	}
+
+	//  Роуты с CSRF (для форм)
+	protected := r.Group("/")
+	protected.Use(csrf.Middleware(csrf.Options{
+		Secret:    string(csrfKey),
+		ErrorFunc: csrfError,
+	}))
+	{
+		protected.GET("/", handler.Home(tpl))
+		protected.GET("/form", handler.FormIndex(tpl))
+		protected.POST("/form", handler.FormSubmit(tpl))
+		protected.GET("/debug", handler.Debug)
+	}
+
+	//  Защищенные роуты с JWT
+	api := r.Group("/api")
+	api.Use(core.JWTMiddleware(cfg))
+	{
+		api.GET("/user", func(c *gin.Context) {
+			claims := c.Request.Context().Value(core.CtxUser).(jwt.MapClaims)
+			c.JSON(http.StatusOK, gin.H{
+				"user": claims["sub"],
+			})
+		})
+	}
+
+	// Обработчик 404
+	r.NoRoute(handler.NotFound(tpl))
 
 	return r, nil
 }
 
 // RequestTimeout — безопасный таймаут для всего запроса.
-// Если истек таймаут и ответ еще не был отправлен, возвращает 408 Request Timeout.
 func RequestTimeout(d time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if d <= 0 {
@@ -170,22 +207,6 @@ func serveStatic(r *gin.Engine, env string) {
 
 	// Раздача статики
 	r.Static("/assets", "web/assets")
-}
-
-// registerRoutes — Регистрация всех маршрутов приложения.
-func registerRoutes(r *gin.Engine, tpl *view.Templates) {
-	// Группы роутов и прочие обработчики
-	r.GET("/", handler.Home(tpl))
-	r.GET("/catalog", handler.Catalog(tpl))
-	r.GET("/product/:id", handler.Product(tpl))
-	r.GET("/form", handler.FormIndex(tpl))
-	r.POST("/form", handler.FormSubmit(tpl))
-	r.GET("/about", handler.About(tpl))
-	r.GET("/debug", handler.Debug)
-	r.GET("/catalog/json", handler.CatalogJSON())
-
-	// Обработчик 404
-	r.NoRoute(handler.NotFound(tpl))
 }
 
 // generateNonce — Создаёт 16 байт криптографически стойкой случайности и кодирует в Base64.
