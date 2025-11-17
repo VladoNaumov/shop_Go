@@ -30,19 +30,19 @@ type PageData struct {
 func New() (*Templates, error) {
 	// Общие layout и частичные шаблоны, которые включаются во все страницы
 	layouts := []string{
-		"web/templates/layouts/base.gohtml",
-		"web/templates/partials/nav.gohtml",
-		"web/templates/partials/footer.gohtml",
+		"web/templates/layouts/base.html",
+		"web/templates/layouts/nav.html",
+		"web/templates/layouts/footer.html",
 	}
 
 	// Страницы -> файлы
 	pages := map[string][]string{
-		"home":     {"web/templates/pages/home.gohtml"},
-		"about":    {"web/templates/pages/about.gohtml"},
-		"form":     {"web/templates/pages/form.gohtml"},
-		"catalog":  {"web/templates/pages/catalog.gohtml"},
-		"product":  {"web/templates/pages/show_product.gohtml"},
-		"notfound": {"web/templates/pages/404.gohtml"},
+		"home":     {"web/templates/pages/home.html"},
+		"about":    {"web/templates/pages/about.html"},
+		"form":     {"web/templates/pages/form.html"},
+		"catalog":  {"web/templates/pages/catalog.html"},
+		"product":  {"web/templates/pages/show_product.html"},
+		"notfound": {"web/templates/pages/404.html"},
 	}
 
 	t := &Templates{templates: make(map[string]*template.Template)}
@@ -77,7 +77,7 @@ func (t *Templates) Render(
 		return fmt.Errorf("шаблон не найден: %s", templateName)
 	}
 
-	// 2) 🛠️ ИСПРАВЛЕНИЕ: Достаём CSP nonce ТОЛЬКО из request.Context.
+	// 2) Достаём CSP nonce ТОЛЬКО из request.Context.
 	// Nonce добавляется в request.Context через middleware withNonceAndDB.
 	nonce := ""
 	if v, ok := c.Request.Context().Value(core.CtxNonce).(string); ok {
@@ -129,7 +129,7 @@ func (t *Templates) Render(
 	return nil
 }
 
-// 🧠 Как это работает в нашей версии (Gin + utrack/gin-csrf):
+//  Как это работает в нашей версии (Gin + utrack/gin-csrf):
 //
 // 1) При запуске сервера вызывается view.New() — шаблоны парсятся один раз и хранятся в памяти.
 //
