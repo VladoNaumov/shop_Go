@@ -8,4 +8,7 @@ type CtxKey string
 const (
 	// CtxNonce — ключ для CSP nonce (кладётся в request.Context в middleware)
 	CtxNonce CtxKey = "nonce"
+
+	// CtxUser — ключ для хранения JWT-claims в контексте
+	CtxUser CtxKey = "user"
 )

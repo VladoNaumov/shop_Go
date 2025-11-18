@@ -50,3 +50,13 @@ func From(err error) *AppError {
 func Forbidden(msg string) *AppError {
 	return &AppError{Code: "forbidden", Status: http.StatusForbidden, Message: msg}
 }
+
+// Unauthorized создаёт ошибку для неавторизованного доступа (HTTP 401)
+func Unauthorized(msg string) *AppError {
+	return &AppError{Code: "unauthorized", Status: http.StatusUnauthorized, Message: msg}
+}
+
+// BadRequest создаёт ошибку для некорректного запроса (HTTP 400)
+func BadRequest(msg string, err error) *AppError {
+	return &AppError{Code: "bad_request", Status: http.StatusBadRequest, Message: msg, Err: err}
+}
