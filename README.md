@@ -23,8 +23,6 @@ myApp/
 │     └─ main.go              # Точка входа (ENV, CSRF-key, DB, graceful shutdown)
 │
 ├─ internal/
-│  ├─ app/
-│  │  └─ app.go               # Gin router, middleware, статика, маршруты
 │  │
 │  ├─ core/
 │  │  ├─ config.go            # ENV-конфиг, Secure-режим, таймауты
@@ -58,9 +56,9 @@ myApp/
 ├─ web/
 │  ├─ assets/                 # CSS/JS/шрифты/изображения
 │  └─ templates/
-│     ├─ layouts/base.gohtml
-│     ├─ partials/{nav,footer}.gohtml
-│     └─ pages/{home,about,form,catalog,product,404}.gohtml
+│     ├─ layouts/base.html
+│     ├─ partials/{nav,footer}.html
+│     └─ pages/{home,about,form,catalog,product,404}.html
 │
 ├─ logs/                      # info- и error-логи с датой
 ├─ nginx.conf                 # Готовый reverse-proxy (TLS, gzip, cache)
@@ -92,10 +90,6 @@ myApp/
 - core/config.go:
 Назначение: Загрузка конфигурации из переменных окружения с дефолтными значениями, комплексная валидация для Prod-режима и безопасная генерация ключей.
 Основные функции: Load, fatalConfigError (обертка для ошибок конфигурации).
-
-- app/app.go (главный конструктор):
-Назначение: Точка сборки Gin-приложения. Устанавливает все middleware в правильном порядке (RequestID, Таймаут, Nonce/DB в контекст, Безопасность, CSP, Сессии, CSRF).
-Основные функции: New, RequestTimeout, withNonceAndDB.
 
 - main.go (точка входа):
 Назначение: Главный файл, отвечающий за последовательную инициализацию (логи, БД, миграции), деривацию CSRF-ключа, запуск HTTP-сервера и Graceful Shutdown.
