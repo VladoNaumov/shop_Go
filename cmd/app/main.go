@@ -1,5 +1,4 @@
 // main.go — точка входа приложения myApp. Содержит всю логику инициализации, middleware, роутов и настроек.
-
 package main
 
 import (
@@ -31,11 +30,12 @@ import (
 
 // ВАЖНО: CSRF secret (долгоживущий ключ) ≠ CSP nonce (случайное значение на КАЖДЫЙ запрос).
 
+// main — упрощённая точка входа: только конфиг, инициализация и запуск.
 func main() {
 	// Загружаем конфиг (из .env, переменных окружения или файла)
 	cfg := core.Load()
 
-	// Логируем старт с параметрами окружения
+	// Log: старт с параметрами окружения
 	core.LogInfo("Приложение запущено", map[string]interface{}{
 		"env":    cfg.Env,    // режим: dev / prod
 		"addr":   cfg.Addr,   // адрес HTTP-сервера
@@ -46,62 +46,71 @@ func main() {
 	// Инициализируем ежедневный лог-файл (по дате)
 	core.InitDailyLog()
 
-	// Подключаем базу данных (sqlx.DB)
-	db, err := storage.NewDB()
+	// Запускаем приложение (вся инициализация внутри: БД, миграции, app, сервер)
+	if err := run(&cfg); err != nil {
+		core.LogError("Критическая ошибка запуска", map[string]interface{}{"error": err})
+		os.Exit(1)
+	}
+}
+
+// run — основная функция lifecycle: storage, app, сервер с graceful shutdown.
+func run(cfg *core.Config) error {
+	// Подключаем БД и миграции
+	db, err := initStorage()
 	if err != nil {
-		core.LogError("Ошибка БД", map[string]interface{}{"error": err})
-		os.Exit(1)
+		return err
 	}
+	defer func() {
+		if err := storage.Close(db); err != nil {
+			core.LogError("Ошибка закрытия БД", map[string]interface{}{"error": err})
+		}
+		core.Close()
+	}()
 
-	// Запускаем миграции, если есть (обновление структуры БД)
-	migrations := storage.NewMigrations(db)
-	if err := migrations.RunMigrations(); err != nil {
-		core.LogError("Ошибка миграций", map[string]interface{}{"error": err})
-		os.Exit(1)
-	}
-
-	// Генерируем или производим derivation CSRF-ключа (32 байта)
-	// Используется для защиты форм и сессий
+	// Генерируем CSRF-ключ
 	csrfKey := deriveSecureKey(cfg.CSRFKey)
 
 	// Инициализируем приложение (Gin, middleware, routes, CSP nonce, CSRF-защиту, Раздаёт статику /assets из web/assets)
-	appHandler, err := newApp(cfg, db, csrfKey)
+	appHandler, err := newApp(*cfg, db, csrfKey)
 	if err != nil {
-		core.LogError("Ошибка app.New", map[string]interface{}{"error": err})
-		os.Exit(1)
+		return err
 	}
 
-	// Создаём HTTP-сервер с таймаутами
-	srv := newHTTPServer(cfg, appHandler)
-
-	// Создаём контекст, который будет отменён при сигнале SIGINT/SIGTERM
-	// (нужно для graceful shutdown)
-	sigs, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Создаём и запускаем HTTP-сервер с graceful shutdown
+	srv := newHTTPServer(*cfg, appHandler)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Запускаем сервер в отдельной горутине
-	go runServer(srv, cfg)
+	core.LogInfo("Сервер запущен, ждём сигнал завершения...", map[string]interface{}{"addr": cfg.Addr})
+	go runServer(srv) // Убрали cfg — не используется
 
-	// Ждём сигнал завершения (Ctrl+C или systemd stop)
-	<-sigs.Done()
+	<-ctx.Done()
 	core.LogInfo("Завершение...", nil)
 
-	// Плавно останавливаем сервер
-	if err := srv.Shutdown(context.Background()); err != nil {
-		core.LogError("Ошибка shutdown", map[string]interface{}{"error": err})
+	// Плавно останавливаем сервер (с таймаутом 30 сек)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
 	}
 
-	// Закрываем соединение с БД
-	if err := storage.Close(db); err != nil {
-		core.LogError("Ошибка закрытия БД", map[string]interface{}{"error": err})
-	}
+	return nil
+}
 
-	// Закрываем логи, если нужно
-	core.Close()
+// initStorage — вынесенная инициализация БД и миграций
+func initStorage() (*sqlx.DB, error) {
+	db, err := storage.NewDB()
+	if err != nil {
+		return nil, err
+	}
+	migrations := storage.NewMigrations(db)
+	if err := migrations.RunMigrations(); err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // newApp — Главный конструктор Gin, собирает всю цепочку middleware и роуты.
-// (Ранее был в internal/app/app.go; инлайнен для одного файла)
 func newApp(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) {
 	// initTemplates — Инициализация шаблонов.
 	tpl, err := initTemplates()
@@ -171,10 +180,8 @@ func RequestTimeout(d time.Duration) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-
 		ctx, cancel := context.WithTimeout(c.Request.Context(), d)
 		defer cancel()
-
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 
@@ -203,10 +210,8 @@ func withNonceAndDB(db *sqlx.DB) gin.HandlerFunc {
 
 		// Кладём nonce в контекст с использованием ключа CtxNonce из core
 		ctx := context.WithValue(c.Request.Context(), core.CtxNonce, nonce)
-
 		// Кладём DB в контекст с использованием ключа CtxDBKey из storage (предполагается его определение)
 		ctx = context.WithValue(ctx, storage.CtxDBKey{}, db)
-
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
@@ -236,8 +241,8 @@ func serveStatic(r *gin.Engine, env string) {
 			c.Next()
 		})
 	}
-	// TODO: В prod стоит добавить кэширование (например, max-age=31536000)
 
+	// TODO: В prod стоит добавить кэширование (например, max-age=31536000)
 	// Раздача статики
 	r.Static("/assets", "web/assets")
 }
@@ -284,9 +289,7 @@ func newHTTPServer(cfg core.Config, h http.Handler) *http.Server {
 }
 
 // runServer — запускает сервер и логирует падения
-func runServer(srv *http.Server, cfg core.Config) {
-	core.LogInfo("Сервер запущен", map[string]interface{}{"addr": cfg.Addr})
-
+func runServer(srv *http.Server) { // Убрали cfg — не используется
 	// Запускаем HTTP-сервер
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		// Если ошибка не "сервер закрыт" — это краш
