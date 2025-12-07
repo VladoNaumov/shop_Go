@@ -30,7 +30,7 @@ import (
 
 // ВАЖНО: CSRF secret (долгоживущий ключ) ≠ CSP nonce (случайное значение на КАЖДЫЙ запрос).
 
-// main — упрощённая точка входа: только конфиг, инициализация и запуск.
+// main — вход: конфиг, инициализация и запуск.
 func main() {
 	// Загружаем конфиг (из .env, переменных окружения или файла)
 	cfg := core.Load()
@@ -97,7 +97,7 @@ func run(cfg *core.Config) error {
 	return nil
 }
 
-// initStorage — вынесенная инициализация БД и миграций
+// initStorage — инициализация БД и миграций
 func initStorage() (*sqlx.DB, error) {
 	db, err := storage.NewDB()
 	if err != nil {
