@@ -1,4 +1,3 @@
-// main.go — точка входа приложения myApp. Содержит всю логику инициализации, middleware, роутов и настроек.
 package main
 
 import (
@@ -7,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,25 +28,25 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 )
 
-// ВАЖНО: CSRF secret (долгоживущий ключ) ≠ CSP nonce (случайное значение на КАЖДЫЙ запрос).
+// Константы для ключей Gin Context (для доступа к ресурсам из обработчиков)
+const (
+	ContextDBKey    = "db_connection"
+	ContextNonceKey = "csp_nonce"
+)
 
-// main — вход: конфиг, инициализация и запуск.
+// Main — вход: конфиг, инициализация и запуск.
 func main() {
-	// Загружаем конфиг (из .env, переменных окружения или файла)
 	cfg := core.Load()
 
-	// Log: старт с параметрами окружения
 	core.LogInfo("Приложение запущено", map[string]interface{}{
-		"env":    cfg.Env,    // режим: dev / prod
-		"addr":   cfg.Addr,   // адрес HTTP-сервера
-		"secure": cfg.Secure, // HTTPS включён или нет
+		"env":    cfg.Env,
+		"addr":   cfg.Addr,
+		"secure": cfg.Secure,
 		"app":    cfg.AppName,
 	})
 
-	// Инициализируем ежедневный лог-файл (по дате)
 	core.InitDailyLog()
 
-	// Запускаем приложение (вся инициализация внутри: БД, миграции, app, сервер)
 	if err := run(&cfg); err != nil {
 		core.LogError("Критическая ошибка запуска", map[string]interface{}{"error": err})
 		os.Exit(1)
@@ -55,7 +55,6 @@ func main() {
 
 // run — основная функция lifecycle: storage, app, сервер с graceful shutdown.
 func run(cfg *core.Config) error {
-	// Подключаем БД и миграции
 	db, err := initStorage()
 	if err != nil {
 		return err
@@ -67,27 +66,23 @@ func run(cfg *core.Config) error {
 		core.Close()
 	}()
 
-	// Генерируем CSRF-ключ
 	csrfKey := deriveSecureKey(cfg.CSRFKey)
 
-	// Инициализируем приложение (Gin, middleware, routes, CSP nonce, CSRF-защиту, Раздаёт статику /assets из web/assets)
 	appHandler, err := newApp(*cfg, db, csrfKey)
 	if err != nil {
 		return err
 	}
 
-	// Создаём и запускаем HTTP-сервер с graceful shutdown
 	srv := newHTTPServer(*cfg, appHandler)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	core.LogInfo("Сервер запущен, ждём сигнал завершения...", map[string]interface{}{"addr": cfg.Addr})
-	go runServer(srv) // Убрали cfg — не используется
+	go runServer(srv)
 
 	<-ctx.Done()
 	core.LogInfo("Завершение...", nil)
 
-	// Плавно останавливаем сервер (с таймаутом 30 сек)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -112,7 +107,6 @@ func initStorage() (*sqlx.DB, error) {
 
 // newApp — Главный конструктор Gin, собирает всю цепочку middleware и роуты.
 func newApp(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) {
-	// initTemplates — Инициализация шаблонов.
 	tpl, err := initTemplates()
 	if err != nil {
 		return nil, err
@@ -120,15 +114,12 @@ func newApp(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) 
 
 	r := gin.New()
 
-	// Настройка режима Gin (ReleaseMode в Prod)
 	if strings.ToLower(cfg.Env) == "prod" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Базовые логи/восстановление паник
 	r.Use(gin.Logger(), gin.Recovery())
 
-	// Trust proxy только локально (добавь IP внешних прокси, если нужно)
 	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 
 	// Корреляция запросов (RequestID)
@@ -137,33 +128,35 @@ func newApp(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) 
 	// Таймаут запроса (отсекаем "висящие" клиенты)
 	r.Use(RequestTimeout(cfg.RequestTimeout))
 
-	// Кладём nonce и DB в контекст запроса — это нужно ДО установки CSP.
+	// ⭐ BEST PRACTICE: Кладём nonce и DB в Gin Context.
+	// Это должно идти до middleware, которое их использует (CSP, обработчики).
 	r.Use(withNonceAndDB(db))
 
 	// Security заголовки (X-Frame-Options, X-Content-Type-Options и пр.)
 	r.Use(core.SecureHeaders())
 
-	// CSP (Content-Security-Policy)
-	r.Use(core.CSPBasic())
+	// CSP (Content-Security-Policy) — читаем nonce из Gin Context (ContextNonceKey)
+	// Используем локальную реализацию CSPBasic(), которая читает nonce по ключу ContextNonceKey.
+	r.Use(CSPBasic())
 
-	// Безопасные cookie-сессии (HttpOnly, SameSite, Secure=prod)
+	// Безопасные cookie-сессии
 	store := cookie.NewStore(csrfKey)
 	store.Options(sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7,
 		HttpOnly: true,
-		Secure:   cfg.Secure, // Используем cfg.Secure для автоматического переключения
+		Secure:   cfg.Secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	r.Use(sessions.Sessions("mysession", store))
 
-	// CSRF защита форм. Использует сессию.
+	// CSRF защита форм.
 	r.Use(csrf.Middleware(csrf.Options{
-		Secret:    base64.StdEncoding.EncodeToString(csrfKey), // Base64 для безопасности (избежать nul-байт)
-		ErrorFunc: csrfError,                                  // Использует 403 Forbidden через core.FailC
+		Secret:    base64.StdEncoding.EncodeToString(csrfKey),
+		ErrorFunc: csrfError,
 	}))
 
-	// Статика (с условным отключением кэша в Dev-режиме)
+	// Статика
 	serveStatic(r, cfg.Env)
 
 	// Роуты
@@ -173,53 +166,99 @@ func newApp(cfg core.Config, db *sqlx.DB, csrfKey []byte) (http.Handler, error) 
 }
 
 // RequestTimeout — безопасный таймаут для всего запроса.
-// Если истек таймаут и ответ еще не был отправлен, возвращает 408 Request Timeout.
+// ⭐ Улучшение: Использование Context.Done() для проверки таймаута Gin-стиле.
 func RequestTimeout(d time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if d <= 0 {
 			c.Next()
 			return
 		}
+
+		// Создаем контекст таймаута на основе контекста запроса
 		ctx, cancel := context.WithTimeout(c.Request.Context(), d)
 		defer cancel()
+
+		// Заменяем контекст запроса на новый с таймаутом
 		c.Request = c.Request.WithContext(ctx)
+
+		// Выполняем цепочку middleware/обработчиков
 		c.Next()
 
-		// Если контекст протух и ещё ничего не было записано в ответ — вернём 408
-		if ctx.Err() != nil && !c.Writer.Written() {
-			// Логируем факт таймаута для мониторинга
+		// Если контекст протух И ответ еще не был отправлен:
+		if err := ctx.Err(); err != nil && errors.Is(err, context.DeadlineExceeded) {
 			core.LogError("Запрос завершился по таймауту", map[string]interface{}{
 				"timeout": d.String(),
 				"path":    c.FullPath(),
+				"error":   err.Error(),
 			})
-			c.AbortWithStatusJSON(http.StatusRequestTimeout, gin.H{"error": "request timeout"})
+			// Аборт и ответ с 408 (если ответ ещё не был отправлен)
+			if !c.Writer.Written() {
+				c.AbortWithStatusJSON(http.StatusRequestTimeout, gin.H{"error": "request timeout"})
+			}
 		}
 	}
 }
 
-// withNonceAndDB — генерирует CSP nonce и кладёт вместе с *sqlx.DB в контекст запроса.
+// withNonceAndDB — генерирует CSP nonce и кладёт вместе с *sqlx.DB в Gin Context.
+// ⭐ BEST PRACTICE: Используем c.Set() для передачи данных в Gin Context.
 func withNonceAndDB(db *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		nonce, err := generateNonce()
 		if err != nil {
-			// Если nonce не сгенерировался, это критическая внутренняя ошибка
 			core.LogError("Ошибка генерации CSP nonce", map[string]interface{}{"error": err})
 			core.FailC(c, core.Internal("nonce generation failed", err))
 			return
 		}
 
-		// Кладём nonce в контекст с использованием ключа CtxNonce из core
-		ctx := context.WithValue(c.Request.Context(), core.CtxNonce, nonce)
-		// Кладём DB в контекст с использованием ключа CtxDBKey из storage (предполагается его определение)
-		ctx = context.WithValue(ctx, storage.CtxDBKey{}, db)
-		c.Request = c.Request.WithContext(ctx)
+		// ⭐ Установка в Gin Context с использованием строковых ключей.
+		c.Set(ContextNonceKey, nonce)
+		c.Set(ContextDBKey, db)
+
+		c.Next()
+	}
+}
+
+// CSPBasic — простая (но безопасная) CSP-политика, которая читает nonce из Gin Context.
+// Берёт nonce по ключу ContextNonceKey; если nonce отсутствует, ставит политику без nonce.
+func CSPBasic() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var nonce string
+		if v, ok := c.Get(ContextNonceKey); ok {
+			if s, _ := v.(string); s != "" {
+				nonce = s
+			}
+		}
+
+		// Построим базовую политику. Подстраивайте по нуждам приложения.
+		// Включаем nonce для inline-скриптов, если он есть.
+		policyBuilder := []string{
+			"default-src 'self'",
+			"object-src 'none'",
+			"base-uri 'self'",
+			"frame-ancestors 'none'",
+		}
+
+		if nonce != "" {
+			// script-src с nonce
+			policyBuilder = append(policyBuilder, fmt.Sprintf("script-src 'self' 'nonce-%s'", nonce))
+			// style-src — лучше не полагаться на nonce для стилей, если используете inline styles, можно добавить 'unsafe-inline' или использовать nonce так же.
+			policyBuilder = append(policyBuilder, "style-src 'self' 'unsafe-inline'")
+		} else {
+			// Если нет nonce — запретим inline-скрипты, но разрешаем self
+			policyBuilder = append(policyBuilder, "script-src 'self'")
+			policyBuilder = append(policyBuilder, "style-src 'self' 'unsafe-inline'")
+		}
+
+		// Собираем политику и ставим заголовок
+		policy := strings.Join(policyBuilder, "; ")
+		c.Header("Content-Security-Policy", policy)
+
 		c.Next()
 	}
 }
 
 // csrfError — единообразный ответ на невалидный CSRF-токен (HTTP 403 Forbidden).
 func csrfError(c *gin.Context) {
-	// 403 Forbidden более точен, чем 500 Internal
 	core.FailC(c, core.Forbidden("CSRF token is invalid or missing."))
 }
 
@@ -230,7 +269,6 @@ func serveStatic(r *gin.Engine, env string) {
 		return
 	}
 
-	// В режиме dev — отключаем кэш для моментального обновления в браузере
 	if strings.ToLower(env) == "dev" {
 		r.Use(func(c *gin.Context) {
 			if strings.HasPrefix(c.Request.URL.Path, "/assets/") {
@@ -242,8 +280,6 @@ func serveStatic(r *gin.Engine, env string) {
 		})
 	}
 
-	// TODO: В prod стоит добавить кэширование (например, max-age=31536000)
-	// Раздача статики
 	r.Static("/assets", "web/assets")
 }
 
@@ -276,32 +312,29 @@ func generateNonce() (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-// newHTTPServer — создаёт http.Server с параметрами из конфига
+// newHTTPServer — создаёт http. Server с параметрами из конфига
 func newHTTPServer(cfg core.Config, h http.Handler) *http.Server {
 	return &http.Server{
-		Addr:              cfg.Addr,              // адрес (например ":8080")
-		Handler:           h,                     // обработчик (Gin engine)
-		ReadHeaderTimeout: cfg.ReadHeaderTimeout, // таймаут заголовков
-		ReadTimeout:       cfg.ReadTimeout,       // общий таймаут чтения
-		WriteTimeout:      cfg.WriteTimeout,      // таймаут записи
-		IdleTimeout:       cfg.IdleTimeout,       // таймаут keep-alive
+		Addr:              cfg.Addr,
+		Handler:           h,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
 	}
 }
 
 // runServer — запускает сервер и логирует падения
-func runServer(srv *http.Server) { // Убрали cfg — не используется
-	// Запускаем HTTP-сервер
+func runServer(srv *http.Server) {
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		// Если ошибка не "сервер закрыт" — это краш
 		core.LogError("Сервер упал", map[string]interface{}{"error": err})
 		os.Exit(1)
 	}
 }
 
-// deriveSecureKey — генерирует 32-байтовый криптографически стойкий ключ для CSRF, если secret пустой — создаёт новый.
+// deriveSecureKey — генерирует 32-байтовый криптографически стойкий ключ для CSRF.
 func deriveSecureKey(secret string) []byte {
 	if len(secret) == 0 {
-		// Если в конфиге нет ключа — генерируем случайный
 		b := make([]byte, 32)
 		if _, err := rand.Read(b); err != nil {
 			panic("unable to generate random bytes: " + err.Error())
@@ -309,8 +342,7 @@ func deriveSecureKey(secret string) []byte {
 		return b
 	}
 
-	// Если ключ задан, "растягиваем" его через PBKDF2
-	// — безопасный способ получить ключ фиксированной длины
+	// Растягивание ключа через PBKDF2 (4096 итераций)
 	salt := []byte("myapp-session-salt")
 	return pbkdf2.Key([]byte(secret), salt, 4096, 32, sha256.New)
 }
